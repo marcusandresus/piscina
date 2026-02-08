@@ -43,5 +43,11 @@ export interface Session {
     phStage1Ml?: number;
     chlorineMl?: number;
   };
+  postApplicationChecklist?: {
+    pumpOn: boolean;
+    dilutedCorrectly: boolean;
+    perimeterApplication: boolean;
+    waitRespected: boolean;
+  };
   notes?: string;
 }
