@@ -1,0 +1,47 @@
+export type ChemicalUnit = "%";
+
+export interface PoolConfig {
+  id: string;
+  updatedAt: string;
+  pool: {
+    diameterM: number;
+    maxHeightCm?: number;
+  };
+  chlorineProduct: {
+    type: string;
+    concentration: number;
+    unit: ChemicalUnit;
+  };
+  acidProduct: {
+    concentration: number;
+    unit: ChemicalUnit;
+  };
+  targets: {
+    phMin: number;
+    phMax: number;
+    chlorineMinPpm: number;
+    chlorineMaxPpm: number;
+  };
+}
+
+export interface Session {
+  id: string;
+  timestamp: string;
+  waterHeightCm: number;
+  measuredPh: number;
+  measuredChlorinePpm: number;
+  calculatedVolumeLiters: number;
+  requiredPhCorrection: {
+    totalMl: number;
+    stage1Ml: number;
+  };
+  requiredChlorineDose: {
+    maintenanceMl: number;
+    correctiveMl: number;
+  };
+  appliedDoses: {
+    phStage1Ml?: number;
+    chlorineMl?: number;
+  };
+  notes?: string;
+}
