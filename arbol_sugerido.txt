@@ -1,0 +1,65 @@
+piscina-pwa/
+├─ README.md
+├─ SPEC.md
+├─ index.html
+├─ package.json
+├─ tsconfig.json
+├─ vite.config.ts
+├─ public/
+│  ├─ icons/
+│  │  ├─ icon-192.png
+│  │  ├─ icon-512.png
+│  └─ manifest.webmanifest
+└─ src/
+   ├─ main.tsx
+   ├─ app/
+   │  ├─ App.tsx
+   │  ├─ router.tsx               # si usas rutas (opcional)
+   │  ├─ theme/                   # si defines tokens simples
+   │  │  └─ ui.ts                 # spacing, typography, etc. (opcional)
+   │  └─ pwa/
+   │     └─ registerSW.ts         # registro del service worker
+   ├─ domain/
+   │  ├─ types.ts                 # PoolConfig, Session, HistoryEntry, etc.
+   │  ├─ defaults.ts              # config por defecto (diámetro, objetivos)
+   │  ├─ calculations.ts          # funciones puras: volumen, dosis (placeholder ok)
+   │  └─ validation.ts            # validaciones de inputs y reglas de flujo
+   ├─ data/
+   │  ├─ db.ts                    # Dexie schema + migrations
+   │  ├─ repositories/
+   │  │  ├─ configRepo.ts         # load/save config
+   │  │  └─ sessionRepo.ts        # CRUD historial/sesiones
+   │  └─ storageKeys.ts           # si usas localStorage (opcional)
+   ├─ state/
+   │  ├─ useConfig.ts             # hook: config global
+   │  ├─ useWizard.ts             # estado del wizard (sesión en curso)
+   │  └─ selectors.ts             # helpers derivados (volumen, flags)
+   ├─ ui/
+   │  ├─ layout/
+   │  │  ├─ Screen.tsx            # layout común de pantalla
+   │  │  ├─ TopBar.tsx
+   │  │  └─ BottomActions.tsx     # CTA principal fijo
+   │  ├─ components/
+   │  │  ├─ BigButton.tsx
+   │  │  ├─ StepHeader.tsx
+   │  │  ├─ ValuePicker.tsx       # grilla de valores para pH/Cloro
+   │  │  ├─ SliderField.tsx       # altura
+   │  │  ├─ Card.tsx
+   │  │  ├─ Badge.tsx
+   │  │  └─ ConfirmDialog.tsx
+   │  └─ screens/
+   │     ├─ HomeScreen.tsx
+   │     ├─ NewSessionHeight.tsx
+   │     ├─ NewSessionPh.tsx
+   │     ├─ NewSessionChlorine.tsx
+   │     ├─ ResultsScreen.tsx
+   │     ├─ PhCorrectionStage1.tsx
+   │     ├─ WaitScreen.tsx
+   │     ├─ ChlorineCorrection.tsx
+   │     ├─ HistoryScreen.tsx
+   │     └─ SettingsScreen.tsx
+   ├─ styles/
+   │  └─ global.css               # estilos base (alto contraste, tamaños)
+   └─ utils/
+      ├─ format.ts                # litros, fechas, unidades
+      └─ ids.ts                   # uuid/simple ids
