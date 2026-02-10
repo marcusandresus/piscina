@@ -362,6 +362,17 @@ body {
   margin-top: 0.9rem;
 }
 
+.chart-title {
+  margin: 0 0 0.2rem;
+  font-size: 0.98rem;
+}
+
+.chart-subtitle {
+  margin: 0 0 0.45rem;
+  color: #5f6b75;
+  font-size: 0.86rem;
+}
+
 .ph-chart {
   position: relative;
   height: 4.25rem;
@@ -420,6 +431,67 @@ body {
   font-size: 0.78rem;
   color: #63717d;
   font-weight: 700;
+}
+
+.axis-label {
+  margin: 0.25rem 0 0;
+  font-size: 0.79rem;
+  color: #63717d;
+  font-weight: 700;
+}
+
+.ta-sensitivity-chart {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: #fff;
+}
+
+.axis-line {
+  stroke: #60717d;
+  stroke-width: 1.4;
+}
+
+.target-line {
+  stroke: #8aa6b7;
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.axis-text {
+  font-size: 10px;
+  fill: #55646f;
+  font-weight: 700;
+}
+
+.ta-curve {
+  fill: none;
+  stroke: currentcolor;
+  stroke-width: 2.2;
+}
+
+.chart-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.7rem;
+  margin-top: 0.4rem;
+}
+
+.legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.8rem;
+  color: #42525d;
+  font-weight: 700;
+}
+
+.legend-swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 0.2rem;
+  border: 1px solid #d0dae1;
 }
 
 @media (min-width: 700px) {

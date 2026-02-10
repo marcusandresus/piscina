@@ -65,6 +65,7 @@ const defaultPostApplicationDraft: PostApplicationDraft = {
 const UI_STATE_KEY = "piscina-ui-state-v1";
 const PH_CHART_MIN = 6.8;
 const PH_CHART_MAX = 8.2;
+const TA_SENSITIVITY_LEVELS = [60, 80, 100, 120, 140];
 const SESSION_FLOW_SCREENS: Screen[] = [
   "results",
   "ph-stage1",
@@ -319,6 +320,37 @@ export function App() {
     draft.measuredPh,
     draft.measuredPhIntermediate
   ]);
+
+  const phSensitivity = useMemo(() => {
+    if (!config || !computed || draft.measuredPh === null) {
+      return null;
+    }
+
+    const appliedStage1Ml = draft.appliedPhStage1Ml ?? computed.stage1PhMl;
+    const maxDoseMl = Math.max(appliedStage1Ml * 2, computed.totalPhMlRaw * 1.6, 40);
+    const pointCount = 11;
+    const doses = Array.from({ length: pointCount }, (_, index) => (maxDoseMl * index) / (pointCount - 1));
+
+    const curves = TA_SENSITIVITY_LEVELS.map((taPpm) => ({
+      taPpm,
+      points: doses.map((doseMl) => ({
+        doseMl,
+        phValue: estimatePhAfterAcidDose(
+          draft.measuredPh!,
+          doseMl,
+          computed.volumeLitersRaw,
+          config.acidProduct.concentration,
+          taPpm
+        )
+      }))
+    }));
+
+    return {
+      doses,
+      maxDoseMl,
+      curves
+    };
+  }, [computed, config, draft.appliedPhStage1Ml, draft.measuredPh]);
 
   const latest = sessions[0];
   const prioritizeChlorine =
@@ -796,6 +828,10 @@ export function App() {
             />
           </label>
           <div className="ph-chart-wrap" aria-label="Grafico de impacto pH etapa 1">
+            <h3 className="chart-title">Grafico 1: Impacto estimado de la etapa 1</h3>
+            <p className="chart-subtitle">
+              Eje X: pH. Compara pH inicial, pH estimado tras la dosis aplicada y pH intermedio medido.
+            </p>
             <div className="ph-chart">
               <div
                 className="ph-target-band"
@@ -832,7 +868,86 @@ export function App() {
               <span>{config.targets.phMax}</span>
               <span>{PH_CHART_MAX}</span>
             </div>
+            <p className="axis-label">Eje X (pH)</p>
           </div>
+          {phSensitivity ? (
+            <div className="ph-chart-wrap" aria-label="Grafico de sensibilidad de pH por TA">
+              <h3 className="chart-title">Grafico 2: Sensibilidad por TA estimada</h3>
+              <p className="chart-subtitle">
+                Eje X: dosis de HCl (ml). Eje Y: pH resultante estimado. Cada curva usa un TA distinto.
+              </p>
+              <svg className="ta-sensitivity-chart" viewBox="0 0 360 220" role="img">
+                <title>Curvas de pH estimado segun dosis de HCl y TA</title>
+                <line className="axis-line" x1="44" y1="16" x2="44" y2="186" />
+                <line className="axis-line" x1="44" y1="186" x2="344" y2="186" />
+                <line
+                  className="target-line"
+                  x1="44"
+                  y1={16 + ((PH_CHART_MAX - config.targets.phMax) / (PH_CHART_MAX - PH_CHART_MIN)) * 170}
+                  x2="344"
+                  y2={16 + ((PH_CHART_MAX - config.targets.phMax) / (PH_CHART_MAX - PH_CHART_MIN)) * 170}
+                />
+                <line
+                  className="target-line"
+                  x1="44"
+                  y1={16 + ((PH_CHART_MAX - config.targets.phMin) / (PH_CHART_MAX - PH_CHART_MIN)) * 170}
+                  x2="344"
+                  y2={16 + ((PH_CHART_MAX - config.targets.phMin) / (PH_CHART_MAX - PH_CHART_MIN)) * 170}
+                />
+                <text className="axis-text" x="6" y="18">
+                  {PH_CHART_MAX}
+                </text>
+                <text
+                  className="axis-text"
+                  x="6"
+                  y={21 + ((PH_CHART_MAX - config.targets.phMax) / (PH_CHART_MAX - PH_CHART_MIN)) * 170}
+                >
+                  {config.targets.phMax}
+                </text>
+                <text
+                  className="axis-text"
+                  x="6"
+                  y={21 + ((PH_CHART_MAX - config.targets.phMin) / (PH_CHART_MAX - PH_CHART_MIN)) * 170}
+                >
+                  {config.targets.phMin}
+                </text>
+                <text className="axis-text" x="6" y="190">
+                  {PH_CHART_MIN}
+                </text>
+                {phSensitivity.curves.map((curve, curveIndex) => {
+                  const color = ["#1e88e5", "#00acc1", "#43a047", "#fb8c00", "#8e24aa"][curveIndex];
+                  const points = curve.points
+                    .map((point) => {
+                      const x = 44 + (point.doseMl / phSensitivity.maxDoseMl) * 300;
+                      const clampedPh = Math.min(PH_CHART_MAX, Math.max(PH_CHART_MIN, point.phValue));
+                      const y = 16 + ((PH_CHART_MAX - clampedPh) / (PH_CHART_MAX - PH_CHART_MIN)) * 170;
+                      return `${x.toFixed(2)},${y.toFixed(2)}`;
+                    })
+                    .join(" ");
+
+                  return <polyline key={curve.taPpm} className="ta-curve" points={points} style={{ color }} />;
+                })}
+                <text className="axis-text" x="44" y="205">
+                  0
+                </text>
+                <text className="axis-text" x="302" y="205">
+                  {toFixedNumber(phSensitivity.maxDoseMl, 0)} ml
+                </text>
+              </svg>
+              <p className="axis-label">Eje Y (pH resultante) vs Eje X (dosis HCl, ml)</p>
+              <div className="chart-legend">
+                {phSensitivity.curves.map((curve, curveIndex) => {
+                  const color = ["#1e88e5", "#00acc1", "#43a047", "#fb8c00", "#8e24aa"][curveIndex];
+                  return (
+                    <span key={curve.taPpm} className="legend-item">
+                      <span className="legend-swatch" style={{ backgroundColor: color }} />
+                      TA {curve.taPpm} ppm
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
           <label className="field-label">
             pH intermedio (opcional)
             <input
