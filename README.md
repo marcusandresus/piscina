@@ -160,7 +160,7 @@ Exportable (v2).
 - $TA$: alcalinidad total estimada $[\mathrm{ppm}]$
 - $Cl_m$: cloro medido $[\mathrm{ppm}]$
 - $Cl_{min}$, $Cl_{max}$: límites objetivo de cloro $[\mathrm{ppm}]$
-- $Cl_{\%}$: concentración de cloro líquido $[\%]$
+- $Cl_{pct}$: concentración de cloro líquido $[\%]$
 
 ### 6.2 Volumen de piscina (cilindro)
 
@@ -237,10 +237,10 @@ $$
 Conversión de concentración líquida:
 
 $$
-mg_{ml} = Cl_{\%}\cdot 10
+mg_{ml} = Cl_{pct}\cdot 10
 $$
 
-Si $Cl_{\%} \le 0$, ambas dosis son 0.
+Si $Cl_{pct} \le 0$, ambas dosis son 0.
 
 Si no:
 
@@ -273,7 +273,7 @@ Interpretación:
 2. Mezcla suficientemente homogénea con recirculación.
 3. $TA$ no medido en campo: se usa valor estimado (por defecto 100 ppm).
 4. La sensibilidad del pH al ácido se modela de forma lineal por tramos de 0.1 pH.
-5. La concentración comercial de cloro se aproxima como $mg/ml = \%\times10$.
+5. La concentración comercial de cloro se aproxima como $mg_{ml} = Cl_{pct}\times10$.
 6. Se prioriza seguridad operacional: corrección de pH en al menos dos pasos, con re-medición intermedia (en piscinas de bajo volumen, referencia típica de espera: 30-60 minutos con recirculación activa).
 
 Todos los cálculos deben poder mostrarse como “¿Cómo se calculó?” para trazabilidad.
@@ -288,7 +288,7 @@ Parámetros de ejemplo (alineados con configuración por defecto):
 - $A=10\%$
 - $TA=100\ \mathrm{ppm}$
 - $Cl_m=0.2\ \mathrm{ppm}$, $Cl_{min}=1$, $Cl_{max}=3$
-- $Cl_{\%}=5\%$
+- $Cl_{pct}=5\%$
 
 Resultados esperados (aprox.):
 
@@ -334,9 +334,9 @@ Casos base recomendados para validar cálculo y redondeo visual (ml enteros en U
 | pH moderado | $pH_m=7.8$, $pH_{max}=7.6$, $A=10\%$, $TA=100$ | `87.32 ml` | `87 ml` |
 | pH alto | $pH_m=8.2$, $pH_{max}=7.6$, $A=10\%$, $TA=100$ | `261.95 ml` | `262 ml` |
 | pH con mayor TA | igual caso pH moderado pero $TA=150$ | `130.97 ml` | `131 ml` |
-| Cloro muy bajo | $Cl_m=0.2$, $Cl_{min}=1$, $Cl_{max}=3$, $Cl_{\%}=5\%$ | mant. `88.84 ml`, corr. `199.90 ml` | mant. `89 ml`, corr. `200 ml` |
-| Cloro intermedio | $Cl_m=1.5$, $Cl_{min}=1$, $Cl_{max}=3$, $Cl_{\%}=5\%$ | mant. `0 ml`, corr. `55.53 ml` | mant. `0 ml`, corr. `56 ml` |
-| Concentración inválida | $Cl_{\%}\le0$ o $A\le0$ | dosis `0 ml` | dosis `0 ml` |
+| Cloro muy bajo | $Cl_m=0.2$, $Cl_{min}=1$, $Cl_{max}=3$, $Cl_{pct}=5\%$ | mant. `88.84 ml`, corr. `199.90 ml` | mant. `89 ml`, corr. `200 ml` |
+| Cloro intermedio | $Cl_m=1.5$, $Cl_{min}=1$, $Cl_{max}=3$, $Cl_{pct}=5\%$ | mant. `0 ml`, corr. `55.53 ml` | mant. `0 ml`, corr. `56 ml` |
+| Concentración inválida | $Cl_{pct}\le0$ o $A\le0$ | dosis `0 ml` | dosis `0 ml` |
 
 ---
 
