@@ -388,7 +388,11 @@ export function App() {
       <header className="app-header">
         <p className="app-kicker">Mantenimiento inteligente</p>
         <div className="title-row">
-          <img className="app-logo" src="/icons/icon-128.png" alt="Icono Piscina PWA" />
+          <img
+            className="app-logo"
+            src={`${import.meta.env.BASE_URL}icons/icon-128.png`}
+            alt="Icono Piscina PWA"
+          />
           <h1 className="app-title">Piscina PWA</h1>
         </div>
         <p className="app-subtitle">Guia offline para ajustar pH y cloro sin sobrecorrecciones</p>

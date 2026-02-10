@@ -1,5 +1,9 @@
 const CACHE_NAME = "piscina-pwa-v1";
-const APP_SHELL = ["/", "/index.html", "/manifest.webmanifest"];
+const scopeUrl = new URL(self.registration.scope);
+const basePath = scopeUrl.pathname.endsWith("/") ? scopeUrl.pathname : `${scopeUrl.pathname}/`;
+const INDEX_URL = `${basePath}index.html`;
+const MANIFEST_URL = `${basePath}manifest.webmanifest`;
+const APP_SHELL = [basePath, INDEX_URL, MANIFEST_URL];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -35,7 +39,7 @@ self.addEventListener("fetch", (event) => {
 
   if (event.request.mode === "navigate") {
     event.respondWith(
-      fetch(event.request).catch(() => caches.match("/index.html"))
+      fetch(event.request).catch(() => caches.match(INDEX_URL))
     );
     return;
   }
