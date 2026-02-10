@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import { configRepo } from "../data/repositories/configRepo";
 import { sessionRepo } from "../data/repositories/sessionRepo";
 import {
@@ -7,6 +7,7 @@ import {
   calculateVolumeLiters,
   classifyChlorine,
   classifyPh,
+  estimatePhAfterAcidDose,
   getStatusLabel,
   isChlorineInRange,
   isHeightInRange,
@@ -34,6 +35,8 @@ type Screen =
 interface DraftSessionInput {
   waterHeightCm: number | null;
   measuredPh: number | null;
+  appliedPhStage1Ml: number | null;
+  measuredPhIntermediate: number | null;
   measuredChlorinePpm: number | null;
 }
 
@@ -60,6 +63,8 @@ const defaultPostApplicationDraft: PostApplicationDraft = {
 };
 
 const UI_STATE_KEY = "piscina-ui-state-v1";
+const PH_CHART_MIN = 6.8;
+const PH_CHART_MAX = 8.2;
 const SESSION_FLOW_SCREENS: Screen[] = [
   "results",
   "ph-stage1",
@@ -141,6 +146,8 @@ export function App() {
   const [draft, setDraft] = useState<DraftSessionInput>({
     waterHeightCm: null,
     measuredPh: null,
+    appliedPhStage1Ml: null,
+    measuredPhIntermediate: null,
     measuredChlorinePpm: null
   });
   const [postDraft, setPostDraft] = useState<PostApplicationDraft>(defaultPostApplicationDraft);
@@ -180,6 +187,14 @@ export function App() {
                 : null,
             measuredPh:
               typeof restored.draft?.measuredPh === "number" ? restored.draft.measuredPh : null,
+            appliedPhStage1Ml:
+              typeof restored.draft?.appliedPhStage1Ml === "number"
+                ? restored.draft.appliedPhStage1Ml
+                : null,
+            measuredPhIntermediate:
+              typeof restored.draft?.measuredPhIntermediate === "number"
+                ? restored.draft.measuredPhIntermediate
+                : null,
             measuredChlorinePpm:
               typeof restored.draft?.measuredChlorinePpm === "number"
                 ? restored.draft.measuredChlorinePpm
@@ -232,13 +247,14 @@ export function App() {
     }
 
     const volumeLiters = calculateVolumeLiters(config.pool.diameterM, draft.waterHeightCm!);
-    const totalPhMl = calculatePhCorrectionMl(
+    const totalPhMlRaw = calculatePhCorrectionMl(
       draft.measuredPh!,
       volumeLiters,
       config.acidProduct.concentration,
       config.targets.phMax,
       config.chemistry.estimatedAlkalinityPpm
     );
+    const stage1PhMlRaw = totalPhMlRaw * 0.5;
     const chlorineDose = calculateChlorineDoseMl(
       draft.measuredChlorinePpm!,
       volumeLiters,
@@ -248,15 +264,61 @@ export function App() {
     );
 
     return {
+      volumeLitersRaw: volumeLiters,
       volumeLiters: toFixedNumber(volumeLiters, 0),
-      totalPhMl: toFixedNumber(totalPhMl, 0),
-      stage1PhMl: toFixedNumber(totalPhMl * 0.5, 0),
+      totalPhMlRaw,
+      totalPhMl: toFixedNumber(totalPhMlRaw, 0),
+      stage1PhMlRaw,
+      stage1PhMl: toFixedNumber(stage1PhMlRaw, 0),
       chlorineMaintenanceMl: toFixedNumber(chlorineDose.maintenanceMl, 0),
       chlorineCorrectiveMl: toFixedNumber(chlorineDose.correctiveMl, 0),
       phStatus: classifyPh(draft.measuredPh!, config),
       chlorineStatus: classifyChlorine(draft.measuredChlorinePpm!, config)
     };
   }, [canGoResults, config, draft.measuredChlorinePpm, draft.measuredPh, draft.waterHeightCm]);
+
+  const phStageInsights = useMemo(() => {
+    if (!config || !computed || draft.measuredPh === null) {
+      return null;
+    }
+
+    const appliedStage1Ml = draft.appliedPhStage1Ml ?? computed.stage1PhMl;
+    const estimatedAfterStage1 = estimatePhAfterAcidDose(
+      draft.measuredPh,
+      appliedStage1Ml,
+      computed.volumeLitersRaw,
+      config.acidProduct.concentration,
+      config.chemistry.estimatedAlkalinityPpm
+    );
+
+    if (draft.measuredPhIntermediate === null || !isPhInRange(draft.measuredPhIntermediate)) {
+      return {
+        appliedStage1Ml,
+        estimatedAfterStage1
+      };
+    }
+
+    const stage2TotalMl = calculatePhCorrectionMl(
+      draft.measuredPhIntermediate,
+      computed.volumeLitersRaw,
+      config.acidProduct.concentration,
+      config.targets.phMax,
+      config.chemistry.estimatedAlkalinityPpm
+    );
+
+    return {
+      appliedStage1Ml,
+      estimatedAfterStage1,
+      stage2TotalMl,
+      stage2ConservativeMl: stage2TotalMl * 0.5
+    };
+  }, [
+    computed,
+    config,
+    draft.appliedPhStage1Ml,
+    draft.measuredPh,
+    draft.measuredPhIntermediate
+  ]);
 
   const latest = sessions[0];
   const prioritizeChlorine =
@@ -286,6 +348,12 @@ export function App() {
     return "status-danger";
   }
 
+  function phMarkerStyle(phValue: number): CSSProperties {
+    const clamped = Math.min(PH_CHART_MAX, Math.max(PH_CHART_MIN, phValue));
+    const left = ((clamped - PH_CHART_MIN) / (PH_CHART_MAX - PH_CHART_MIN)) * 100;
+    return { left: `${left}%` };
+  }
+
   async function saveSession(): Promise<void> {
     if (!config || !computed || !canGoResults || saving) {
       return;
@@ -299,6 +367,10 @@ export function App() {
         timestamp: new Date().toISOString(),
         waterHeightCm: draft.waterHeightCm!,
         measuredPh: draft.measuredPh!,
+        measuredPhIntermediate:
+          draft.measuredPhIntermediate !== null && isPhInRange(draft.measuredPhIntermediate)
+            ? draft.measuredPhIntermediate
+            : undefined,
         measuredChlorinePpm: draft.measuredChlorinePpm!,
         calculatedVolumeLiters: computed.volumeLiters,
         requiredPhCorrection: {
@@ -310,7 +382,7 @@ export function App() {
           correctiveMl: computed.chlorineCorrectiveMl
         },
         appliedDoses: {
-          phStage1Ml: computed.stage1PhMl,
+          phStage1Ml: toFixedNumber(draft.appliedPhStage1Ml ?? computed.stage1PhMl, 0),
           chlorineMl: computed.chlorineCorrectiveMl
         },
         postApplicationChecklist: {
@@ -339,6 +411,8 @@ export function App() {
     setDraft({
       waterHeightCm: null,
       measuredPh: null,
+      appliedPhStage1Ml: null,
+      measuredPhIntermediate: null,
       measuredChlorinePpm: null
     });
     setError(null);
@@ -517,7 +591,12 @@ export function App() {
               max={config.pool.maxHeightCm ?? 200}
               value={draft.waterHeightCm ?? ""}
               onChange={(event) =>
-                setDraft((prev) => ({ ...prev, waterHeightCm: Number(event.target.value) }))
+                setDraft((prev) => ({
+                  ...prev,
+                  waterHeightCm: Number(event.target.value),
+                  appliedPhStage1Ml: null,
+                  measuredPhIntermediate: null
+                }))
               }
             />
           </label>
@@ -550,7 +629,12 @@ export function App() {
               step={0.1}
               value={draft.measuredPh ?? ""}
               onChange={(event) =>
-                setDraft((prev) => ({ ...prev, measuredPh: Number(event.target.value) }))
+                setDraft((prev) => ({
+                  ...prev,
+                  measuredPh: Number(event.target.value),
+                  appliedPhStage1Ml: null,
+                  measuredPhIntermediate: null
+                }))
               }
             />
           </label>
@@ -671,7 +755,17 @@ export function App() {
             <li>Aplicar en forma perimetral.</li>
           </ul>
           <div className="actions">
-            <button className="btn-primary" onClick={() => setScreen("wait")} type="button">
+            <button
+              className="btn-primary"
+              onClick={() => {
+                setDraft((prev) => ({
+                  ...prev,
+                  appliedPhStage1Ml: prev.appliedPhStage1Ml ?? computed.stage1PhMl
+                }));
+                setScreen("wait");
+              }}
+              type="button"
+            >
               Ir a espera
             </button>
             <button className="btn-secondary" onClick={() => setScreen("results")} type="button">
@@ -681,13 +775,100 @@ export function App() {
         </section>
       ) : null}
 
-      {screen === "wait" ? (
+      {screen === "wait" && computed && phStageInsights ? (
         <section className="card">
           <h2 className="section-title">Esperar 30-60 minutos</h2>
           <p>Luego repetir medicion de pH antes de la etapa 2.</p>
           <p className="inline-note">
             Referencia: este rango aplica a piscinas de poco volumen (por ejemplo, &lt; 5 m3).
           </p>
+          <label className="field-label">
+            Dosis aplicada en etapa 1 (ml)
+            <input
+              className="field-input"
+              type="number"
+              min={0}
+              step={1}
+              value={draft.appliedPhStage1Ml ?? computed.stage1PhMl}
+              onChange={(event) =>
+                setDraft((prev) => ({ ...prev, appliedPhStage1Ml: Number(event.target.value) }))
+              }
+            />
+          </label>
+          <div className="ph-chart-wrap" aria-label="Grafico de impacto pH etapa 1">
+            <div className="ph-chart">
+              <div
+                className="ph-target-band"
+                style={{
+                  left: `${((config.targets.phMin - PH_CHART_MIN) / (PH_CHART_MAX - PH_CHART_MIN)) * 100}%`,
+                  width: `${((config.targets.phMax - config.targets.phMin) / (PH_CHART_MAX - PH_CHART_MIN)) * 100}%`
+                }}
+              />
+              <span className="ph-marker ph-marker-start" style={phMarkerStyle(draft.measuredPh!)}>
+                <span className="ph-marker-label">Inicial {toFixedNumber(draft.measuredPh!, 2)}</span>
+              </span>
+              <span
+                className="ph-marker ph-marker-estimated"
+                style={phMarkerStyle(phStageInsights.estimatedAfterStage1)}
+              >
+                <span className="ph-marker-label">
+                  Estimado {toFixedNumber(phStageInsights.estimatedAfterStage1, 2)}
+                </span>
+              </span>
+              {draft.measuredPhIntermediate !== null && isPhInRange(draft.measuredPhIntermediate) ? (
+                <span
+                  className="ph-marker ph-marker-measured"
+                  style={phMarkerStyle(draft.measuredPhIntermediate)}
+                >
+                  <span className="ph-marker-label">
+                    Medido {toFixedNumber(draft.measuredPhIntermediate, 2)}
+                  </span>
+                </span>
+              ) : null}
+            </div>
+            <div className="ph-chart-scale">
+              <span>{PH_CHART_MIN}</span>
+              <span>{config.targets.phMin}</span>
+              <span>{config.targets.phMax}</span>
+              <span>{PH_CHART_MAX}</span>
+            </div>
+          </div>
+          <label className="field-label">
+            pH intermedio (opcional)
+            <input
+              className="field-input"
+              type="number"
+              min={6.8}
+              max={8.2}
+              step={0.1}
+              value={draft.measuredPhIntermediate ?? ""}
+              onChange={(event) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  measuredPhIntermediate:
+                    event.target.value === "" ? null : Number(event.target.value)
+                }))
+              }
+              placeholder="Ejemplo: 7.4"
+            />
+          </label>
+          {draft.measuredPhIntermediate !== null && !isPhInRange(draft.measuredPhIntermediate) ? (
+            <p className="error-text">El pH intermedio debe estar entre 6.8 y 8.2.</p>
+          ) : null}
+          {typeof phStageInsights.stage2TotalMl === "number" ? (
+            <div className="metrics-grid">
+              <article className="metric">
+                <p className="metric-label">Etapa 2 directa (si fuese necesaria)</p>
+                <p className="metric-value">{toFixedNumber(phStageInsights.stage2TotalMl, 0)} ml</p>
+              </article>
+              <article className="metric">
+                <p className="metric-label">Etapa 2 conservadora (50%)</p>
+                <p className="metric-value">
+                  {toFixedNumber(phStageInsights.stage2ConservativeMl ?? 0, 0)} ml
+                </p>
+              </article>
+            </div>
+          ) : null}
           <div className="actions">
             <button className="btn-primary" onClick={() => setScreen("chlorine-correction")} type="button">
               Continuar con cloro
@@ -797,6 +978,9 @@ export function App() {
                 Altura {session.waterHeightCm} cm | pH {session.measuredPh} | Cl{" "}
                 {session.measuredChlorinePpm} ppm
               </p>
+              {typeof session.measuredPhIntermediate === "number" ? (
+                <p>pH intermedio: {session.measuredPhIntermediate}</p>
+              ) : null}
               <p>
                 pH etapa 1: {session.requiredPhCorrection.stage1Ml} ml | Cloro:{" "}
                 {session.requiredChlorineDose.correctiveMl} ml

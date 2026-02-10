@@ -358,6 +358,70 @@ body {
   color: #5f6b75;
 }
 
+.ph-chart-wrap {
+  margin-top: 0.9rem;
+}
+
+.ph-chart {
+  position: relative;
+  height: 4.25rem;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: linear-gradient(90deg, #ffe8e8 0%, #fff6d8 35%, #e7f6e8 50%, #fff6d8 65%, #ffe8e8 100%);
+}
+
+.ph-target-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgb(56 142 60 / 0.18);
+  border-left: 1px dashed #2e7d32;
+  border-right: 1px dashed #2e7d32;
+}
+
+.ph-marker {
+  position: absolute;
+  bottom: 0;
+  width: 0;
+  height: 100%;
+  border-left: 2px solid #263238;
+}
+
+.ph-marker-label {
+  position: absolute;
+  top: 0.2rem;
+  left: 0.25rem;
+  white-space: nowrap;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: #1d2a33;
+  background: rgb(255 255 255 / 0.86);
+  padding: 0.08rem 0.3rem;
+  border-radius: 0.35rem;
+  border: 1px solid #d4dde4;
+}
+
+.ph-marker-start {
+  border-left-color: #5d4037;
+}
+
+.ph-marker-estimated {
+  border-left-color: #1565c0;
+}
+
+.ph-marker-measured {
+  border-left-color: #2e7d32;
+}
+
+.ph-chart-scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.28rem;
+  font-size: 0.78rem;
+  color: #63717d;
+  font-weight: 700;
+}
+
 @media (min-width: 700px) {
   .app-shell {
     padding: 1.25rem 1.2rem 2.6rem;

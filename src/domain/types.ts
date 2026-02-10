@@ -32,6 +32,7 @@ export interface Session {
   timestamp: string;
   waterHeightCm: number;
   measuredPh: number;
+  measuredPhIntermediate?: number;
   measuredChlorinePpm: number;
   calculatedVolumeLiters: number;
   requiredPhCorrection: {

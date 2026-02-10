@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
   calculateChlorineDoseMl,
+  calculatePhMlPerStep,
   calculatePhCorrectionMl,
   calculateVolumeLiters,
   classifyChlorine,
   classifyPh,
+  estimatePhAfterAcidDose,
   isChlorineInRange,
   isHeightInRange,
   isPhInRange,
@@ -52,6 +54,13 @@ describe("calculatePhCorrectionMl", () => {
     const doseAt150 = calculatePhCorrectionMl(7.8, volumeLiters, 10, 7.6, 150);
 
     expect(doseAt150).toBeCloseTo(doseAt100 * 1.5, 9);
+  });
+
+  it("estima pH luego de aplicar una dosis conocida", () => {
+    const volumeLiters = calculateVolumeLiters(3.05, 76);
+    const mlPerStep = calculatePhMlPerStep(volumeLiters, 10, 100);
+    const estimated = estimatePhAfterAcidDose(7.8, mlPerStep * 2, volumeLiters, 10, 100);
+    expect(estimated).toBeCloseTo(7.6, 9);
   });
 });
 
