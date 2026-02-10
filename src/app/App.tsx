@@ -465,7 +465,7 @@ export function App() {
             </li>
             <li>
               <strong>pH en doble paso (obligatorio):</strong> aplica solo el 50% en etapa 1, enciende
-              bomba, distribuye perimetralmente y espera 4-6 horas.
+              bomba, distribuye perimetralmente y espera 30-60 minutos.
             </li>
             <li>
               <strong>Re-medicion pH:</strong> vuelve a medir antes de considerar una segunda etapa.
@@ -485,6 +485,10 @@ export function App() {
           <p className="help-highlight">
             Regla de oro: nunca hagas una correccion agresiva de pH en un solo paso, porque el TA real
             puede diferir del estimado y provocar sobrecorreccion.
+          </p>
+          <p className="inline-note">
+            El rango de espera de 30-60 minutos es valido para piscinas de poco volumen (por ejemplo,
+            menores a 5 m3) con recirculacion activa.
           </p>
           <div className="actions">
             <button className="btn-primary" onClick={startNewSession} type="button">
@@ -675,8 +679,11 @@ export function App() {
 
       {screen === "wait" ? (
         <section className="card">
-          <h2 className="section-title">Esperar 4-6 horas</h2>
+          <h2 className="section-title">Esperar 30-60 minutos</h2>
           <p>Luego repetir medicion de pH antes de la etapa 2.</p>
+          <p className="inline-note">
+            Referencia: este rango aplica a piscinas de poco volumen (por ejemplo, &lt; 5 m3).
+          </p>
           <div className="actions">
             <button className="btn-primary" onClick={() => setScreen("chlorine-correction")} type="button">
               Continuar con cloro
