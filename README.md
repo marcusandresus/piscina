@@ -323,6 +323,21 @@ En la UI estos valores se muestran redondeados a ml enteros.
 4. Por seguridad, cualquier corrección de pH se valida con re-medición antes de segunda etapa.
 5. Si los parámetros de entrada son extremos o inconsistentes (concentración \(\le 0\), lecturas fuera de rango), la app fuerza dosis 0 o bloquea avance.
 
+### 6.9 Tabla rápida de QA manual
+
+Casos base recomendados para validar cálculo y redondeo visual (ml enteros en UI).
+
+| Caso | Inputs | Esperado en dominio (aprox.) | Esperado en UI |
+|---|---|---|---|
+| Volumen base | \(d=3.05\), \(h=76\) cm | \(V_L=5552.69\) L | `5553 L` |
+| pH sin ajuste | \(pH_m=7.6\), \(pH_{max}=7.6\), \(A=10\%\), \(TA=100\) | `0 ml` | `0 ml` |
+| pH moderado | \(pH_m=7.8\), \(pH_{max}=7.6\), \(A=10\%\), \(TA=100\) | `87.32 ml` | `87 ml` |
+| pH alto | \(pH_m=8.2\), \(pH_{max}=7.6\), \(A=10\%\), \(TA=100\) | `261.95 ml` | `262 ml` |
+| pH con mayor TA | igual caso pH moderado pero \(TA=150\) | `130.97 ml` | `131 ml` |
+| Cloro muy bajo | \(Cl_m=0.2\), \(Cl_{min}=1\), \(Cl_{max}=3\), \(Cl_{\%}=5\%\) | mant. `88.84 ml`, corr. `199.90 ml` | mant. `89 ml`, corr. `200 ml` |
+| Cloro intermedio | \(Cl_m=1.5\), \(Cl_{min}=1\), \(Cl_{max}=3\), \(Cl_{\%}=5\%\) | mant. `0 ml`, corr. `55.53 ml` | mant. `0 ml`, corr. `56 ml` |
+| Concentración inválida | \(Cl_{\%}\le0\) o \(A\le0\) | dosis `0 ml` | dosis `0 ml` |
+
 ---
 
 ## 7. Arquitectura técnica (v1)
