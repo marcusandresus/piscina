@@ -201,12 +201,18 @@ export function App() {
     }
 
     const volumeLiters = calculateVolumeLiters(config.pool.diameterM, draft.waterHeightCm!);
-    const totalPhMl = calculatePhCorrectionMl(draft.measuredPh!, volumeLiters);
+    const totalPhMl = calculatePhCorrectionMl(
+      draft.measuredPh!,
+      volumeLiters,
+      config.acidProduct.concentration,
+      config.targets.phMax
+    );
     const chlorineDose = calculateChlorineDoseMl(
       draft.measuredChlorinePpm!,
       volumeLiters,
       config.chlorineProduct.concentration,
-      config.targets.chlorineMinPpm
+      config.targets.chlorineMinPpm,
+      config.targets.chlorineMaxPpm
     );
 
     return {
@@ -564,11 +570,11 @@ export function App() {
               <p className="metric-value">{computed.stage1PhMl} ml</p>
             </article>
             <article className="metric">
-              <p className="metric-label">Cloro mantencion</p>
+              <p className="metric-label">Cloro hasta minimo</p>
               <p className="metric-value">{computed.chlorineMaintenanceMl} ml</p>
             </article>
             <article className="metric">
-              <p className="metric-label">Cloro correctivo</p>
+              <p className="metric-label">Cloro correctivo (objetivo)</p>
               <p className="metric-value">{computed.chlorineCorrectiveMl} ml</p>
             </article>
           </div>
@@ -793,6 +799,29 @@ export function App() {
                         ...prev,
                         chlorineProduct: {
                           ...prev.chlorineProduct,
+                          concentration: Number(event.target.value)
+                        }
+                      }
+                    : prev
+                )
+              }
+            />
+          </label>
+          <label className="field-label">
+            Acido muriatico %
+            <input
+              className="field-input"
+              type="number"
+              min={0.1}
+              step={0.1}
+              value={settingsDraft.acidProduct.concentration}
+              onChange={(event) =>
+                setSettingsDraft((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        acidProduct: {
+                          ...prev.acidProduct,
                           concentration: Number(event.target.value)
                         }
                       }

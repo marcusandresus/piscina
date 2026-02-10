@@ -2,7 +2,8 @@ import type { PoolConfig } from "./types";
 
 const PH_NEUTRAL_MIN = 7.2;
 const PH_NEUTRAL_MAX = 7.6;
-const PH_DOSE_ML_PER_01_10K = 100;
+const REFERENCE_MURIATIC_ACID_PCT = 31.45;
+const PH_DOSE_ML_PER_01_10K_AT_31_PCT = 25;
 const CHLORINE_MG_PER_PPM_L = 1;
 
 export function calculateVolumeLiters(diameterM: number, waterHeightCm: number): number {
@@ -12,32 +13,43 @@ export function calculateVolumeLiters(diameterM: number, waterHeightCm: number):
   return volumeM3 * 1000;
 }
 
-export function calculatePhCorrectionMl(measuredPh: number, volumeLiters: number): number {
-  if (measuredPh <= PH_NEUTRAL_MAX) {
+export function calculatePhCorrectionMl(
+  measuredPh: number,
+  volumeLiters: number,
+  acidConcentrationPct: number,
+  targetPhMax: number
+): number {
+  if (measuredPh <= targetPhMax || acidConcentrationPct <= 0) {
     return 0;
   }
 
-  const delta = measuredPh - PH_NEUTRAL_MAX;
+  const delta = measuredPh - targetPhMax;
   const steps = delta / 0.1;
   const volumeFactor = volumeLiters / 10000;
-  return Math.max(0, steps * PH_DOSE_ML_PER_01_10K * volumeFactor);
+  const concentrationFactor = REFERENCE_MURIATIC_ACID_PCT / acidConcentrationPct;
+  const mlPerStepForConcentration = PH_DOSE_ML_PER_01_10K_AT_31_PCT * concentrationFactor;
+  return Math.max(0, steps * mlPerStepForConcentration * volumeFactor);
 }
 
 export function calculateChlorineDoseMl(
   measuredChlorinePpm: number,
   volumeLiters: number,
   chlorineConcentrationPct: number,
-  targetMinPpm: number
+  targetMinPpm: number,
+  targetMaxPpm: number
 ): { maintenanceMl: number; correctiveMl: number } {
   if (chlorineConcentrationPct <= 0) {
     return { maintenanceMl: 0, correctiveMl: 0 };
   }
 
-  const deficitPpm = Math.max(0, targetMinPpm - measuredChlorinePpm);
-  const mgNeeded = deficitPpm * CHLORINE_MG_PER_PPM_L * volumeLiters;
+  const targetMidPpm = (targetMinPpm + targetMaxPpm) / 2;
+  const deficitToMinPpm = Math.max(0, targetMinPpm - measuredChlorinePpm);
+  const deficitToMidPpm = Math.max(0, targetMidPpm - measuredChlorinePpm);
+  const mgNeededToMin = deficitToMinPpm * CHLORINE_MG_PER_PPM_L * volumeLiters;
+  const mgNeededToMid = deficitToMidPpm * CHLORINE_MG_PER_PPM_L * volumeLiters;
   const mgPerMl = chlorineConcentrationPct * 10;
-  const correctiveMl = mgNeeded / mgPerMl;
-  const maintenanceMl = correctiveMl > 0 ? correctiveMl * 0.5 : 0;
+  const maintenanceMl = mgNeededToMin / mgPerMl;
+  const correctiveMl = mgNeededToMid / mgPerMl;
 
   return { maintenanceMl, correctiveMl };
 }
