@@ -156,11 +156,11 @@ Exportable (v2).
 - $V_L$: volumen de agua $[\mathrm{L}]$
 - $pH_m$: pH medido
 - $pH_{max}$: pH objetivo máximo (tope del rango)
-- $A$: concentración de ácido muriático $[\%]$
+- $A$: concentración de ácido muriático (porcentaje, %)
 - $TA$: alcalinidad total estimada $[\mathrm{ppm}]$
 - $Cl_m$: cloro medido $[\mathrm{ppm}]$
 - $Cl_{min}$, $Cl_{max}$: límites objetivo de cloro $[\mathrm{ppm}]$
-- $Cl_{pct}$: concentración de cloro líquido $[\%]$
+- $Cl_{pct}$: concentración de cloro líquido (porcentaje, %)
 
 ### 6.2 Volumen de piscina (cilindro)
 
