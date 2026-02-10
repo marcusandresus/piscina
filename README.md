@@ -112,7 +112,7 @@ Comparación contra objetivos configurados.
 - Indicar:
   - cantidad exacta
   - encender bomba
-  - esperar 4–6 horas
+  - esperar 30-60 minutos (piscinas de bajo volumen, con recirculación activa)
 - Re-medición antes de Etapa 2
 
 #### Cloro
@@ -149,13 +149,179 @@ Exportable (v2).
 
 ## 6. Cálculos internos
 
-- Volumen:
+### 6.1 Notación
 
-volumen = π × (diámetro / 2)² × altura
+- \(d\): diámetro de piscina \([\mathrm{m}]\)
+- \(h_{cm}\): altura de agua \([\mathrm{cm}]\)
+- \(V_L\): volumen de agua \([\mathrm{L}]\)
+- \(pH_m\): pH medido
+- \(pH_{max}\): pH objetivo máximo (tope del rango)
+- \(A\): concentración de ácido muriático \([\%]\)
+- \(TA\): alcalinidad total estimada \([\mathrm{ppm}]\)
+- \(Cl_m\): cloro medido \([\mathrm{ppm}]\)
+- \(Cl_{min}\), \(Cl_{max}\): límites objetivo de cloro \([\mathrm{ppm}]\)
+- \(Cl_{\%}\): concentración de cloro líquido \([\%]\)
 
-- Todos los cálculos deben poder mostrarse como:
+### 6.2 Volumen de piscina (cilindro)
 
-**“¿Cómo se calculó?”** (transparencia).
+$$
+V_L = \pi \left(\frac{d}{2}\right)^2 \left(\frac{h_{cm}}{100}\right)\cdot 1000
+$$
+
+### 6.3 Corrección de pH (ácido muriático)
+
+Si \(pH_m \le pH_{max}\) o \(A \le 0\), la dosis es 0.
+
+En caso contrario:
+
+$$
+\Delta pH = pH_m - pH_{max}
+$$
+
+$$
+\text{steps} = \frac{\Delta pH}{0.1}
+$$
+
+$$
+F_V = \frac{V_L}{10000}
+$$
+
+$$
+F_A = \frac{31.45}{A}
+$$
+
+$$
+F_{TA} = \max\left(0.4,\frac{TA}{100}\right)
+$$
+
+$$
+\text{dosis\_pH\_ml} = \max\left(0,\text{steps}\cdot 25 \cdot F_A \cdot F_V \cdot F_{TA}\right)
+$$
+
+Donde 25 ml es la referencia por cada 0.1 de pH en 10,000 L con ácido al 31.45%.
+
+Aplicación en dos etapas:
+
+$$
+\text{etapa1\_ml} = 0.5 \cdot \text{dosis\_pH\_ml}
+$$
+
+### 6.4 Dosis de cloro
+
+Objetivo central:
+
+$$
+Cl_{mid} = \frac{Cl_{min}+Cl_{max}}{2}
+$$
+
+Déficits:
+
+$$
+\Delta Cl_{min} = \max(0, Cl_{min}-Cl_m)
+$$
+
+$$
+\Delta Cl_{mid} = \max(0, Cl_{mid}-Cl_m)
+$$
+
+Masa requerida de cloro activo (usando \(1\ \mathrm{ppm}=1\ \mathrm{mg/L}\)):
+
+$$
+mg_{min} = \Delta Cl_{min}\cdot V_L
+$$
+
+$$
+mg_{mid} = \Delta Cl_{mid}\cdot V_L
+$$
+
+Conversión de concentración líquida:
+
+$$
+mg\_por\_ml = Cl_{\%}\cdot 10
+$$
+
+Si \(Cl_{\%} \le 0\), ambas dosis son 0.
+
+Si no:
+
+$$
+\text{dosis\_mantencion\_ml} = \frac{mg_{min}}{mg\_por\_ml}
+$$
+
+$$
+\text{dosis\_correctiva\_ml} = \frac{mg_{mid}}{mg\_por\_ml}
+$$
+
+Interpretación:
+- `mantención`: llegar al mínimo del rango objetivo.
+- `correctiva`: llegar al valor central del rango objetivo.
+
+### 6.5 Estados de evaluación
+
+- pH:
+  - `ok`: \(pH_m \in [pH_{min}, pH_{max}]\)
+  - `leve`: \(pH_m \in [pH_{min}-0.2, pH_{max}+0.2]\)
+  - `ajuste`: fuera de ese margen
+- Cloro:
+  - `ok`: \(Cl_m \in [Cl_{min}, Cl_{max}]\)
+  - `leve`: \(Cl_m \in [Cl_{min}-0.5, Cl_{max}+0.5]\)
+  - `ajuste`: fuera de ese margen
+
+### 6.6 Suposiciones necesarias
+
+1. Geometría ideal de cilindro para estimar volumen.
+2. Mezcla suficientemente homogénea con recirculación.
+3. \(TA\) no medido en campo: se usa valor estimado (por defecto 100 ppm).
+4. La sensibilidad del pH al ácido se modela de forma lineal por tramos de 0.1 pH.
+5. La concentración comercial de cloro se aproxima como \(mg/ml = \%\times10\).
+6. Se prioriza seguridad operacional: corrección de pH en al menos dos pasos, con re-medición intermedia (en piscinas de bajo volumen, referencia típica de espera: 30-60 minutos con recirculación activa).
+
+Todos los cálculos deben poder mostrarse como “¿Cómo se calculó?” para trazabilidad.
+
+### 6.7 Ejemplo numérico completo
+
+Parámetros de ejemplo (alineados con configuración por defecto):
+
+- \(d=3.05\ \mathrm{m}\)
+- \(h_{cm}=76\ \mathrm{cm}\)
+- \(pH_m=7.8\), \(pH_{max}=7.6\)
+- \(A=10\%\)
+- \(TA=100\ \mathrm{ppm}\)
+- \(Cl_m=0.2\ \mathrm{ppm}\), \(Cl_{min}=1\), \(Cl_{max}=3\)
+- \(Cl_{\%}=5\%\)
+
+Resultados esperados (aprox.):
+
+1. Volumen:
+   $$
+   V_L \approx 5552.69\ \mathrm{L}
+   $$
+2. pH total:
+   $$
+   \text{dosis\_pH\_ml} \approx 87.32\ \mathrm{ml}
+   $$
+3. pH etapa 1 (50%):
+   $$
+   \text{etapa1\_ml} \approx 43.66\ \mathrm{ml}
+   $$
+4. Cloro mantención (hasta mínimo):
+   $$
+   \text{dosis\_mantencion\_ml} \approx 88.84\ \mathrm{ml}
+   $$
+5. Cloro correctiva (hasta central):
+   $$
+   \text{dosis\_correctiva\_ml} \approx 199.90\ \mathrm{ml}
+   $$
+
+En la UI estos valores se muestran redondeados a ml enteros.
+
+### 6.8 Alcance y límites del modelo
+
+1. Es un modelo práctico-operativo, no una simulación fisicoquímica completa del sistema carbonato.
+2. El factor \(F_{TA}\) mejora la aproximación al incluir alcalinidad estimada, pero no reemplaza medición real de TA.
+3. Cambios de temperatura, carga orgánica, exposición solar y calidad del reactivo pueden desviar el resultado teórico.
+4. Por seguridad, cualquier corrección de pH se valida con re-medición antes de segunda etapa.
+5. Si los parámetros de entrada son extremos o inconsistentes (concentración \(\le 0\), lecturas fuera de rango), la app fuerza dosis 0 o bloquea avance.
 
 ---
 
