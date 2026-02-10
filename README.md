@@ -151,16 +151,16 @@ Exportable (v2).
 
 ### 6.1 Notación
 
-- \(d\): diámetro de piscina \([\mathrm{m}]\)
-- \(h_{cm}\): altura de agua \([\mathrm{cm}]\)
-- \(V_L\): volumen de agua \([\mathrm{L}]\)
-- \(pH_m\): pH medido
-- \(pH_{max}\): pH objetivo máximo (tope del rango)
-- \(A\): concentración de ácido muriático \([\%]\)
-- \(TA\): alcalinidad total estimada \([\mathrm{ppm}]\)
-- \(Cl_m\): cloro medido \([\mathrm{ppm}]\)
-- \(Cl_{min}\), \(Cl_{max}\): límites objetivo de cloro \([\mathrm{ppm}]\)
-- \(Cl_{\%}\): concentración de cloro líquido \([\%]\)
+- $d$: diámetro de piscina $[\mathrm{m}]$
+- $h_{cm}$: altura de agua $[\mathrm{cm}]$
+- $V_L$: volumen de agua $[\mathrm{L}]$
+- $pH_m$: pH medido
+- $pH_{max}$: pH objetivo máximo (tope del rango)
+- $A$: concentración de ácido muriático $[\%]$
+- $TA$: alcalinidad total estimada $[\mathrm{ppm}]$
+- $Cl_m$: cloro medido $[\mathrm{ppm}]$
+- $Cl_{min}$, $Cl_{max}$: límites objetivo de cloro $[\mathrm{ppm}]$
+- $Cl_{\%}$: concentración de cloro líquido $[\%]$
 
 ### 6.2 Volumen de piscina (cilindro)
 
@@ -170,7 +170,7 @@ $$
 
 ### 6.3 Corrección de pH (ácido muriático)
 
-Si \(pH_m \le pH_{max}\) o \(A \le 0\), la dosis es 0.
+Si $pH_m \le pH_{max}$ o $A \le 0$, la dosis es 0.
 
 En caso contrario:
 
@@ -179,7 +179,7 @@ $$
 $$
 
 $$
-\text{steps} = \frac{\Delta pH}{0.1}
+S = \frac{\Delta pH}{0.1}
 $$
 
 $$
@@ -195,7 +195,7 @@ F_{TA} = \max\left(0.4,\frac{TA}{100}\right)
 $$
 
 $$
-\text{dosis\_pH\_ml} = \max\left(0,\text{steps}\cdot 25 \cdot F_A \cdot F_V \cdot F_{TA}\right)
+D_{pH,ml} = \max\left(0,S\cdot 25 \cdot F_A \cdot F_V \cdot F_{TA}\right)
 $$
 
 Donde 25 ml es la referencia por cada 0.1 de pH en 10,000 L con ácido al 31.45%.
@@ -203,7 +203,7 @@ Donde 25 ml es la referencia por cada 0.1 de pH en 10,000 L con ácido al 31.45%
 Aplicación en dos etapas:
 
 $$
-\text{etapa1\_ml} = 0.5 \cdot \text{dosis\_pH\_ml}
+E_{1,ml} = 0.5 \cdot D_{pH,ml}
 $$
 
 ### 6.4 Dosis de cloro
@@ -224,7 +224,7 @@ $$
 \Delta Cl_{mid} = \max(0, Cl_{mid}-Cl_m)
 $$
 
-Masa requerida de cloro activo (usando \(1\ \mathrm{ppm}=1\ \mathrm{mg/L}\)):
+Masa requerida de cloro activo (usando $1\ \mathrm{ppm}=1\ \mathrm{mg/L}$):
 
 $$
 mg_{min} = \Delta Cl_{min}\cdot V_L
@@ -237,19 +237,19 @@ $$
 Conversión de concentración líquida:
 
 $$
-mg\_por\_ml = Cl_{\%}\cdot 10
+mg_{ml} = Cl_{\%}\cdot 10
 $$
 
-Si \(Cl_{\%} \le 0\), ambas dosis son 0.
+Si $Cl_{\%} \le 0$, ambas dosis son 0.
 
 Si no:
 
 $$
-\text{dosis\_mantencion\_ml} = \frac{mg_{min}}{mg\_por\_ml}
+D_{mant,ml} = \frac{mg_{min}}{mg_{ml}}
 $$
 
 $$
-\text{dosis\_correctiva\_ml} = \frac{mg_{mid}}{mg\_por\_ml}
+D_{corr,ml} = \frac{mg_{mid}}{mg_{ml}}
 $$
 
 Interpretación:
@@ -259,21 +259,21 @@ Interpretación:
 ### 6.5 Estados de evaluación
 
 - pH:
-  - `ok`: \(pH_m \in [pH_{min}, pH_{max}]\)
-  - `leve`: \(pH_m \in [pH_{min}-0.2, pH_{max}+0.2]\)
+  - `ok`: $pH_m \in [pH_{min}, pH_{max}]$
+  - `leve`: $pH_m \in [pH_{min}-0.2, pH_{max}+0.2]$
   - `ajuste`: fuera de ese margen
 - Cloro:
-  - `ok`: \(Cl_m \in [Cl_{min}, Cl_{max}]\)
-  - `leve`: \(Cl_m \in [Cl_{min}-0.5, Cl_{max}+0.5]\)
+  - `ok`: $Cl_m \in [Cl_{min}, Cl_{max}]$
+  - `leve`: $Cl_m \in [Cl_{min}-0.5, Cl_{max}+0.5]$
   - `ajuste`: fuera de ese margen
 
 ### 6.6 Suposiciones necesarias
 
 1. Geometría ideal de cilindro para estimar volumen.
 2. Mezcla suficientemente homogénea con recirculación.
-3. \(TA\) no medido en campo: se usa valor estimado (por defecto 100 ppm).
+3. $TA$ no medido en campo: se usa valor estimado (por defecto 100 ppm).
 4. La sensibilidad del pH al ácido se modela de forma lineal por tramos de 0.1 pH.
-5. La concentración comercial de cloro se aproxima como \(mg/ml = \%\times10\).
+5. La concentración comercial de cloro se aproxima como $mg/ml = \%\times10$.
 6. Se prioriza seguridad operacional: corrección de pH en al menos dos pasos, con re-medición intermedia (en piscinas de bajo volumen, referencia típica de espera: 30-60 minutos con recirculación activa).
 
 Todos los cálculos deben poder mostrarse como “¿Cómo se calculó?” para trazabilidad.
@@ -282,13 +282,13 @@ Todos los cálculos deben poder mostrarse como “¿Cómo se calculó?” para t
 
 Parámetros de ejemplo (alineados con configuración por defecto):
 
-- \(d=3.05\ \mathrm{m}\)
-- \(h_{cm}=76\ \mathrm{cm}\)
-- \(pH_m=7.8\), \(pH_{max}=7.6\)
-- \(A=10\%\)
-- \(TA=100\ \mathrm{ppm}\)
-- \(Cl_m=0.2\ \mathrm{ppm}\), \(Cl_{min}=1\), \(Cl_{max}=3\)
-- \(Cl_{\%}=5\%\)
+- $d=3.05\ \mathrm{m}$
+- $h_{cm}=76\ \mathrm{cm}$
+- $pH_m=7.8$, $pH_{max}=7.6$
+- $A=10\%$
+- $TA=100\ \mathrm{ppm}$
+- $Cl_m=0.2\ \mathrm{ppm}$, $Cl_{min}=1$, $Cl_{max}=3$
+- $Cl_{\%}=5\%$
 
 Resultados esperados (aprox.):
 
@@ -298,30 +298,30 @@ Resultados esperados (aprox.):
    $$
 2. pH total:
    $$
-   \text{dosis\_pH\_ml} \approx 87.32\ \mathrm{ml}
-   $$
+   D_{pH,ml} \approx 87.32\ \mathrm{ml}
+$$
 3. pH etapa 1 (50%):
    $$
-   \text{etapa1\_ml} \approx 43.66\ \mathrm{ml}
-   $$
+   E_{1,ml} \approx 43.66\ \mathrm{ml}
+$$
 4. Cloro mantención (hasta mínimo):
    $$
-   \text{dosis\_mantencion\_ml} \approx 88.84\ \mathrm{ml}
-   $$
+   D_{mant,ml} \approx 88.84\ \mathrm{ml}
+$$
 5. Cloro correctiva (hasta central):
    $$
-   \text{dosis\_correctiva\_ml} \approx 199.90\ \mathrm{ml}
-   $$
+   D_{corr,ml} \approx 199.90\ \mathrm{ml}
+$$
 
 En la UI estos valores se muestran redondeados a ml enteros.
 
 ### 6.8 Alcance y límites del modelo
 
 1. Es un modelo práctico-operativo, no una simulación fisicoquímica completa del sistema carbonato.
-2. El factor \(F_{TA}\) mejora la aproximación al incluir alcalinidad estimada, pero no reemplaza medición real de TA.
+2. El factor $F_{TA}$ mejora la aproximación al incluir alcalinidad estimada, pero no reemplaza medición real de TA.
 3. Cambios de temperatura, carga orgánica, exposición solar y calidad del reactivo pueden desviar el resultado teórico.
 4. Por seguridad, cualquier corrección de pH se valida con re-medición antes de segunda etapa.
-5. Si los parámetros de entrada son extremos o inconsistentes (concentración \(\le 0\), lecturas fuera de rango), la app fuerza dosis 0 o bloquea avance.
+5. Si los parámetros de entrada son extremos o inconsistentes (concentración $\le 0$, lecturas fuera de rango), la app fuerza dosis 0 o bloquea avance.
 
 ### 6.9 Tabla rápida de QA manual
 
@@ -329,14 +329,14 @@ Casos base recomendados para validar cálculo y redondeo visual (ml enteros en U
 
 | Caso | Inputs | Esperado en dominio (aprox.) | Esperado en UI |
 |---|---|---|---|
-| Volumen base | \(d=3.05\), \(h=76\) cm | \(V_L=5552.69\) L | `5553 L` |
-| pH sin ajuste | \(pH_m=7.6\), \(pH_{max}=7.6\), \(A=10\%\), \(TA=100\) | `0 ml` | `0 ml` |
-| pH moderado | \(pH_m=7.8\), \(pH_{max}=7.6\), \(A=10\%\), \(TA=100\) | `87.32 ml` | `87 ml` |
-| pH alto | \(pH_m=8.2\), \(pH_{max}=7.6\), \(A=10\%\), \(TA=100\) | `261.95 ml` | `262 ml` |
-| pH con mayor TA | igual caso pH moderado pero \(TA=150\) | `130.97 ml` | `131 ml` |
-| Cloro muy bajo | \(Cl_m=0.2\), \(Cl_{min}=1\), \(Cl_{max}=3\), \(Cl_{\%}=5\%\) | mant. `88.84 ml`, corr. `199.90 ml` | mant. `89 ml`, corr. `200 ml` |
-| Cloro intermedio | \(Cl_m=1.5\), \(Cl_{min}=1\), \(Cl_{max}=3\), \(Cl_{\%}=5\%\) | mant. `0 ml`, corr. `55.53 ml` | mant. `0 ml`, corr. `56 ml` |
-| Concentración inválida | \(Cl_{\%}\le0\) o \(A\le0\) | dosis `0 ml` | dosis `0 ml` |
+| Volumen base | $d=3.05$, $h=76$ cm | $V_L=5552.69$ L | `5553 L` |
+| pH sin ajuste | $pH_m=7.6$, $pH_{max}=7.6$, $A=10\%$, $TA=100$ | `0 ml` | `0 ml` |
+| pH moderado | $pH_m=7.8$, $pH_{max}=7.6$, $A=10\%$, $TA=100$ | `87.32 ml` | `87 ml` |
+| pH alto | $pH_m=8.2$, $pH_{max}=7.6$, $A=10\%$, $TA=100$ | `261.95 ml` | `262 ml` |
+| pH con mayor TA | igual caso pH moderado pero $TA=150$ | `130.97 ml` | `131 ml` |
+| Cloro muy bajo | $Cl_m=0.2$, $Cl_{min}=1$, $Cl_{max}=3$, $Cl_{\%}=5\%$ | mant. `88.84 ml`, corr. `199.90 ml` | mant. `89 ml`, corr. `200 ml` |
+| Cloro intermedio | $Cl_m=1.5$, $Cl_{min}=1$, $Cl_{max}=3$, $Cl_{\%}=5\%$ | mant. `0 ml`, corr. `55.53 ml` | mant. `0 ml`, corr. `56 ml` |
+| Concentración inválida | $Cl_{\%}\le0$ o $A\le0$ | dosis `0 ml` | dosis `0 ml` |
 
 ---
 
@@ -376,3 +376,4 @@ Casos base recomendados para validar cálculo y redondeo visual (ml enteros en U
 Especialmente pH: siempre en dos etapas.
 
 ---
+
