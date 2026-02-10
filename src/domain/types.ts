@@ -16,6 +16,9 @@ export interface PoolConfig {
     concentration: number;
     unit: ChemicalUnit;
   };
+  chemistry: {
+    estimatedAlkalinityPpm: number;
+  };
   targets: {
     phMin: number;
     phMax: number;

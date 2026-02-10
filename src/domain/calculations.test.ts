@@ -23,27 +23,35 @@ describe("calculateVolumeLiters", () => {
 describe("calculatePhCorrectionMl", () => {
   it("retorna 0 si el pH ya esta en objetivo maximo o menor", () => {
     const volumeLiters = calculateVolumeLiters(3.05, 76);
-    expect(calculatePhCorrectionMl(7.6, volumeLiters, 10, 7.6)).toBe(0);
-    expect(calculatePhCorrectionMl(7.4, volumeLiters, 10, 7.6)).toBe(0);
+    expect(calculatePhCorrectionMl(7.6, volumeLiters, 10, 7.6, 100)).toBe(0);
+    expect(calculatePhCorrectionMl(7.4, volumeLiters, 10, 7.6, 100)).toBe(0);
   });
 
   it("calcula dosis para pH 7.8 con acido al 10%", () => {
     const volumeLiters = calculateVolumeLiters(3.05, 76);
-    const totalMl = calculatePhCorrectionMl(7.8, volumeLiters, 10, 7.6);
+    const totalMl = calculatePhCorrectionMl(7.8, volumeLiters, 10, 7.6, 100);
     expect(totalMl).toBeCloseTo(87.31599482572199, 9);
     expect(toFixedNumber(totalMl, 0)).toBe(87);
   });
 
   it("calcula dosis para pH 8.2 con acido al 10%", () => {
     const volumeLiters = calculateVolumeLiters(3.05, 76);
-    const totalMl = calculatePhCorrectionMl(8.2, volumeLiters, 10, 7.6);
+    const totalMl = calculatePhCorrectionMl(8.2, volumeLiters, 10, 7.6, 100);
     expect(totalMl).toBeCloseTo(261.94798447716556, 9);
     expect(toFixedNumber(totalMl, 0)).toBe(262);
   });
 
   it("retorna 0 con concentracion de acido invalida", () => {
     const volumeLiters = calculateVolumeLiters(3.05, 76);
-    expect(calculatePhCorrectionMl(8, volumeLiters, 0, 7.6)).toBe(0);
+    expect(calculatePhCorrectionMl(8, volumeLiters, 0, 7.6, 100)).toBe(0);
+  });
+
+  it("escala dosis de pH segun alcalinidad estimada", () => {
+    const volumeLiters = calculateVolumeLiters(3.05, 76);
+    const doseAt100 = calculatePhCorrectionMl(7.8, volumeLiters, 10, 7.6, 100);
+    const doseAt150 = calculatePhCorrectionMl(7.8, volumeLiters, 10, 7.6, 150);
+
+    expect(doseAt150).toBeCloseTo(doseAt100 * 1.5, 9);
   });
 });
 

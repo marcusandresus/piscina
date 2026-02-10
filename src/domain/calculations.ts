@@ -17,7 +17,8 @@ export function calculatePhCorrectionMl(
   measuredPh: number,
   volumeLiters: number,
   acidConcentrationPct: number,
-  targetPhMax: number
+  targetPhMax: number,
+  estimatedAlkalinityPpm: number
 ): number {
   if (measuredPh <= targetPhMax || acidConcentrationPct <= 0) {
     return 0;
@@ -27,8 +28,9 @@ export function calculatePhCorrectionMl(
   const steps = delta / 0.1;
   const volumeFactor = volumeLiters / 10000;
   const concentrationFactor = REFERENCE_MURIATIC_ACID_PCT / acidConcentrationPct;
+  const alkalinityFactor = Math.max(0.4, estimatedAlkalinityPpm / 100);
   const mlPerStepForConcentration = PH_DOSE_ML_PER_01_10K_AT_31_PCT * concentrationFactor;
-  return Math.max(0, steps * mlPerStepForConcentration * volumeFactor);
+  return Math.max(0, steps * mlPerStepForConcentration * volumeFactor * alkalinityFactor);
 }
 
 export function calculateChlorineDoseMl(

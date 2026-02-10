@@ -100,6 +100,37 @@ function isValidDraftForResults(draft: DraftSessionInput, config: PoolConfig): b
   );
 }
 
+function normalizeConfig(loaded: PoolConfig | undefined): PoolConfig {
+  if (!loaded) {
+    return defaultPoolConfig;
+  }
+
+  return {
+    ...defaultPoolConfig,
+    ...loaded,
+    pool: {
+      ...defaultPoolConfig.pool,
+      ...loaded.pool
+    },
+    chlorineProduct: {
+      ...defaultPoolConfig.chlorineProduct,
+      ...loaded.chlorineProduct
+    },
+    acidProduct: {
+      ...defaultPoolConfig.acidProduct,
+      ...loaded.acidProduct
+    },
+    chemistry: {
+      ...defaultPoolConfig.chemistry,
+      ...loaded.chemistry
+    },
+    targets: {
+      ...defaultPoolConfig.targets,
+      ...loaded.targets
+    }
+  };
+}
+
 export function App() {
   const [config, setConfig] = useState<PoolConfig | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -120,7 +151,7 @@ export function App() {
       setLoading(true);
       try {
         const loaded = await configRepo.load();
-        const nextConfig = loaded ?? defaultPoolConfig;
+        const nextConfig = normalizeConfig(loaded);
 
         if (!loaded) {
           await configRepo.save(defaultPoolConfig);
@@ -205,7 +236,8 @@ export function App() {
       draft.measuredPh!,
       volumeLiters,
       config.acidProduct.concentration,
-      config.targets.phMax
+      config.targets.phMax,
+      config.chemistry.estimatedAlkalinityPpm
     );
     const chlorineDose = calculateChlorineDoseMl(
       draft.measuredChlorinePpm!,
@@ -330,6 +362,11 @@ export function App() {
       return;
     }
 
+    if (settingsDraft.chemistry.estimatedAlkalinityPpm <= 0) {
+      setError("La alcalinidad estimada (TA) debe ser mayor a 0 ppm.");
+      return;
+    }
+
     try {
       setError(null);
       await configRepo.save(settingsDraft);
@@ -379,6 +416,10 @@ export function App() {
                 {config.targets.chlorineMinPpm} - {config.targets.chlorineMaxPpm} ppm
               </p>
             </article>
+            <article className="metric">
+              <p className="metric-label">TA estimada</p>
+              <p className="metric-value">{config.chemistry.estimatedAlkalinityPpm} ppm</p>
+            </article>
           </div>
           {latest ? (
             <div className="latest-session">
@@ -419,6 +460,10 @@ export function App() {
               <strong>Evaluacion:</strong> revisa estado y dosis calculadas para el volumen real.
             </li>
             <li>
+              <strong>Doble objetivo para cloro:</strong> la dosis de mantencion apunta al minimo del
+              rango; la dosis correctiva apunta al valor central del rango.
+            </li>
+            <li>
               <strong>pH en doble paso (obligatorio):</strong> aplica solo el 50% en etapa 1, enciende
               bomba, distribuye perimetralmente y espera 4-6 horas.
             </li>
@@ -426,15 +471,20 @@ export function App() {
               <strong>Re-medicion pH:</strong> vuelve a medir antes de considerar una segunda etapa.
             </li>
             <li>
+              <strong>TA estimada:</strong> el calculo de pH usa alcalinidad estimada (por defecto 100
+              ppm). Si sube TA, suele subir la dosis de acido necesaria.
+            </li>
+            <li>
               <strong>Correccion de cloro:</strong> aplica dosis de mantencion o correctiva segun el
-              resultado.
+              resultado esperado (minimo o central).
             </li>
             <li>
               <strong>Checklist y notas:</strong> confirma seguridad de aplicacion y guarda observaciones.
             </li>
           </ol>
           <p className="help-highlight">
-            Regla de oro: nunca hagas una correccion agresiva de pH en un solo paso.
+            Regla de oro: nunca hagas una correccion agresiva de pH en un solo paso, porque el TA real
+            puede diferir del estimado y provocar sobrecorreccion.
           </p>
           <div className="actions">
             <button className="btn-primary" onClick={startNewSession} type="button">
@@ -574,10 +624,13 @@ export function App() {
               <p className="metric-value">{computed.chlorineMaintenanceMl} ml</p>
             </article>
             <article className="metric">
-              <p className="metric-label">Cloro correctivo (objetivo)</p>
+              <p className="metric-label">Cloro correctivo (valor central)</p>
               <p className="metric-value">{computed.chlorineCorrectiveMl} ml</p>
             </article>
           </div>
+          <p className="inline-note">
+            Mantencion = llegar al minimo del rango. Correctivo = llegar al valor central.
+          </p>
           <div className="actions">
             <button
               className={prioritizeChlorine ? "btn-secondary" : "btn-primary"}
@@ -638,8 +691,8 @@ export function App() {
       {screen === "chlorine-correction" && computed ? (
         <section className="card">
           <h2 className="section-title">Correccion de cloro</h2>
-          <p>Dosis de mantencion: {computed.chlorineMaintenanceMl} ml</p>
-          <p>Dosis correctiva: {computed.chlorineCorrectiveMl} ml</p>
+          <p>Dosis de mantencion (hasta minimo): {computed.chlorineMaintenanceMl} ml</p>
+          <p>Dosis correctiva (hasta valor central): {computed.chlorineCorrectiveMl} ml</p>
           <ul className="bullet-list">
             <li>Bomba encendida.</li>
             <li>Dilucion previa.</li>
@@ -823,6 +876,29 @@ export function App() {
                         acidProduct: {
                           ...prev.acidProduct,
                           concentration: Number(event.target.value)
+                        }
+                      }
+                    : prev
+                )
+              }
+            />
+          </label>
+          <label className="field-label">
+            Alcalinidad estimada TA (ppm)
+            <input
+              className="field-input"
+              type="number"
+              min={1}
+              step={1}
+              value={settingsDraft.chemistry.estimatedAlkalinityPpm}
+              onChange={(event) =>
+                setSettingsDraft((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        chemistry: {
+                          ...prev.chemistry,
+                          estimatedAlkalinityPpm: Number(event.target.value)
                         }
                       }
                     : prev
