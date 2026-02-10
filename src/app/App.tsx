@@ -19,6 +19,7 @@ import "./App.css";
 
 type Screen =
   | "home"
+  | "help"
   | "new-height"
   | "new-ph"
   | "new-chlorine"
@@ -44,6 +45,12 @@ interface PostApplicationDraft {
   notes: string;
 }
 
+interface PersistedUiState {
+  screen: Screen;
+  draft: DraftSessionInput;
+  postDraft: PostApplicationDraft;
+}
+
 const defaultPostApplicationDraft: PostApplicationDraft = {
   pumpOn: false,
   dilutedCorrectly: false,
@@ -51,6 +58,47 @@ const defaultPostApplicationDraft: PostApplicationDraft = {
   waitRespected: false,
   notes: ""
 };
+
+const UI_STATE_KEY = "piscina-ui-state-v1";
+const SESSION_FLOW_SCREENS: Screen[] = [
+  "results",
+  "ph-stage1",
+  "wait",
+  "chlorine-correction",
+  "post-checklist"
+];
+
+function isScreen(value: unknown): value is Screen {
+  if (typeof value !== "string") {
+    return false;
+  }
+
+  return (
+    value === "home" ||
+    value === "help" ||
+    value === "new-height" ||
+    value === "new-ph" ||
+    value === "new-chlorine" ||
+    value === "results" ||
+    value === "ph-stage1" ||
+    value === "wait" ||
+    value === "chlorine-correction" ||
+    value === "post-checklist" ||
+    value === "history" ||
+    value === "settings"
+  );
+}
+
+function isValidDraftForResults(draft: DraftSessionInput, config: PoolConfig): boolean {
+  return (
+    draft.waterHeightCm !== null &&
+    draft.measuredPh !== null &&
+    draft.measuredChlorinePpm !== null &&
+    isHeightInRange(draft.waterHeightCm, config.pool.maxHeightCm) &&
+    isPhInRange(draft.measuredPh) &&
+    isChlorineInRange(draft.measuredChlorinePpm)
+  );
+}
 
 export function App() {
   const [config, setConfig] = useState<PoolConfig | null>(null);
@@ -82,6 +130,54 @@ export function App() {
         setConfig(nextConfig);
         setSettingsDraft(nextConfig);
         setSessions(loadedSessions);
+
+        try {
+          const rawState = localStorage.getItem(UI_STATE_KEY);
+          if (!rawState) {
+            return;
+          }
+
+          const restored = JSON.parse(rawState) as Partial<PersistedUiState>;
+          if (!isScreen(restored.screen)) {
+            return;
+          }
+
+          const restoredDraft: DraftSessionInput = {
+            waterHeightCm:
+              typeof restored.draft?.waterHeightCm === "number"
+                ? restored.draft.waterHeightCm
+                : null,
+            measuredPh:
+              typeof restored.draft?.measuredPh === "number" ? restored.draft.measuredPh : null,
+            measuredChlorinePpm:
+              typeof restored.draft?.measuredChlorinePpm === "number"
+                ? restored.draft.measuredChlorinePpm
+                : null
+          };
+
+          const restoredPostDraft: PostApplicationDraft = {
+            pumpOn: Boolean(restored.postDraft?.pumpOn),
+            dilutedCorrectly: Boolean(restored.postDraft?.dilutedCorrectly),
+            perimeterApplication: Boolean(restored.postDraft?.perimeterApplication),
+            waitRespected: Boolean(restored.postDraft?.waitRespected),
+            notes: typeof restored.postDraft?.notes === "string" ? restored.postDraft.notes : ""
+          };
+
+          setDraft(restoredDraft);
+          setPostDraft(restoredPostDraft);
+
+          if (
+            SESSION_FLOW_SCREENS.includes(restored.screen) &&
+            !isValidDraftForResults(restoredDraft, nextConfig)
+          ) {
+            setScreen("new-height");
+            return;
+          }
+
+          setScreen(restored.screen);
+        } catch {
+          localStorage.removeItem(UI_STATE_KEY);
+        }
       } catch {
         setError("No se pudo cargar datos locales.");
       } finally {
@@ -125,6 +221,32 @@ export function App() {
   }, [canGoResults, config, draft.measuredChlorinePpm, draft.measuredPh, draft.waterHeightCm]);
 
   const latest = sessions[0];
+  const prioritizeChlorine =
+    computed !== null && computed.phStatus === "ok" && computed.chlorineStatus !== "ok";
+
+  useEffect(() => {
+    if (!config || loading) {
+      return;
+    }
+
+    const payload: PersistedUiState = {
+      screen,
+      draft,
+      postDraft
+    };
+
+    localStorage.setItem(UI_STATE_KEY, JSON.stringify(payload));
+  }, [config, draft, loading, postDraft, screen]);
+
+  function statusTone(value: "ok" | "leve" | "ajuste"): string {
+    if (value === "ok") {
+      return "status-ok";
+    }
+    if (value === "leve") {
+      return "status-warn";
+    }
+    return "status-danger";
+  }
 
   async function saveSession(): Promise<void> {
     if (!config || !computed || !canGoResults || saving) {
@@ -167,6 +289,7 @@ export function App() {
       setSessions(updatedSessions);
       setScreen("home");
       setPostDraft(defaultPostApplicationDraft);
+      localStorage.removeItem(UI_STATE_KEY);
     } catch {
       setError("No se pudo guardar la sesion.");
     } finally {
@@ -183,6 +306,7 @@ export function App() {
     setError(null);
     setPostDraft(defaultPostApplicationDraft);
     setScreen("new-height");
+    localStorage.removeItem(UI_STATE_KEY);
   }
 
   async function saveSettings(): Promise<void> {
@@ -216,28 +340,48 @@ export function App() {
 
   return (
     <main className="app-shell">
+      <div className="bg-orb bg-orb-a" />
+      <div className="bg-orb bg-orb-b" />
       <header className="app-header">
-        <h1 className="app-title">Piscina PWA</h1>
-        <p className="app-subtitle">Asistente offline para mantenimiento quimico</p>
+        <p className="app-kicker">Mantenimiento inteligente</p>
+        <div className="title-row">
+          <img className="app-logo" src="/icons/icon-128.png" alt="Icono Piscina PWA" />
+          <h1 className="app-title">Piscina PWA</h1>
+        </div>
+        <p className="app-subtitle">Guia offline para ajustar pH y cloro sin sobrecorrecciones</p>
       </header>
 
       {error ? <p className="error-text">{error}</p> : null}
 
       {screen === "home" ? (
         <section className="card">
-          <h2 className="section-title">Estado</h2>
-          <p>Diametro: {config.pool.diameterM} m</p>
-          <p>
-            Objetivo pH: {config.targets.phMin} - {config.targets.phMax}
-          </p>
-          <p>
-            Cloro objetivo: {config.targets.chlorineMinPpm} - {config.targets.chlorineMaxPpm} ppm
-          </p>
+          <h2 className="section-title">Panel de estado</h2>
+          <div className="metrics-grid">
+            <article className="metric">
+              <p className="metric-label">Diametro</p>
+              <p className="metric-value">{config.pool.diameterM} m</p>
+            </article>
+            <article className="metric">
+              <p className="metric-label">Objetivo pH</p>
+              <p className="metric-value">
+                {config.targets.phMin} - {config.targets.phMax}
+              </p>
+            </article>
+            <article className="metric">
+              <p className="metric-label">Objetivo Cloro</p>
+              <p className="metric-value">
+                {config.targets.chlorineMinPpm} - {config.targets.chlorineMaxPpm} ppm
+              </p>
+            </article>
+          </div>
           {latest ? (
-            <p>
-              Ultima medicion: {new Date(latest.timestamp).toLocaleString()} (pH {latest.measuredPh},
-              Cl {latest.measuredChlorinePpm} ppm)
-            </p>
+            <div className="latest-session">
+              <p className="latest-title">Ultima medicion</p>
+              <p>
+                {new Date(latest.timestamp).toLocaleString()} | pH {latest.measuredPh} | Cl{" "}
+                {latest.measuredChlorinePpm} ppm
+              </p>
+            </div>
           ) : (
             <p>Sin mediciones registradas.</p>
           )}
@@ -250,6 +394,48 @@ export function App() {
             </button>
             <button className="btn-secondary" onClick={() => setScreen("settings")} type="button">
               Ajustes
+            </button>
+            <button className="btn-secondary" onClick={() => setScreen("help")} type="button">
+              Ayuda
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {screen === "help" ? (
+        <section className="card">
+          <h2 className="section-title">Ayuda: proceso de mantenimiento</h2>
+          <ol className="help-list">
+            <li>
+              <strong>Medicion inicial:</strong> registra altura del agua, pH y cloro.
+            </li>
+            <li>
+              <strong>Evaluacion:</strong> revisa estado y dosis calculadas para el volumen real.
+            </li>
+            <li>
+              <strong>pH en doble paso (obligatorio):</strong> aplica solo el 50% en etapa 1, enciende
+              bomba, distribuye perimetralmente y espera 4-6 horas.
+            </li>
+            <li>
+              <strong>Re-medicion pH:</strong> vuelve a medir antes de considerar una segunda etapa.
+            </li>
+            <li>
+              <strong>Correccion de cloro:</strong> aplica dosis de mantencion o correctiva segun el
+              resultado.
+            </li>
+            <li>
+              <strong>Checklist y notas:</strong> confirma seguridad de aplicacion y guarda observaciones.
+            </li>
+          </ol>
+          <p className="help-highlight">
+            Regla de oro: nunca hagas una correccion agresiva de pH en un solo paso.
+          </p>
+          <div className="actions">
+            <button className="btn-primary" onClick={startNewSession} type="button">
+              Iniciar nueva medicion
+            </button>
+            <button className="btn-secondary" onClick={() => setScreen("home")} type="button">
+              Volver al inicio
             </button>
           </div>
         </section>
@@ -360,17 +546,45 @@ export function App() {
         <section className="card">
           <h2 className="section-title">Resultados</h2>
           <p>Volumen calculado: {computed.volumeLiters} L</p>
-          <p>Estado pH: {getStatusLabel(computed.phStatus)}</p>
-          <p>Estado cloro: {getStatusLabel(computed.chlorineStatus)}</p>
-          <p>Correccion pH total: {computed.totalPhMl} ml</p>
-          <p>Etapa 1 pH (50%): {computed.stage1PhMl} ml</p>
-          <p>Cloro mantencion: {computed.chlorineMaintenanceMl} ml</p>
-          <p>Cloro correctivo: {computed.chlorineCorrectiveMl} ml</p>
+          <div className="status-row">
+            <span className={`status-pill ${statusTone(computed.phStatus)}`}>
+              pH: {getStatusLabel(computed.phStatus)}
+            </span>
+            <span className={`status-pill ${statusTone(computed.chlorineStatus)}`}>
+              Cloro: {getStatusLabel(computed.chlorineStatus)}
+            </span>
+          </div>
+          <div className="metrics-grid">
+            <article className="metric">
+              <p className="metric-label">Correccion pH total</p>
+              <p className="metric-value">{computed.totalPhMl} ml</p>
+            </article>
+            <article className="metric">
+              <p className="metric-label">Etapa 1 pH (50%)</p>
+              <p className="metric-value">{computed.stage1PhMl} ml</p>
+            </article>
+            <article className="metric">
+              <p className="metric-label">Cloro mantencion</p>
+              <p className="metric-value">{computed.chlorineMaintenanceMl} ml</p>
+            </article>
+            <article className="metric">
+              <p className="metric-label">Cloro correctivo</p>
+              <p className="metric-value">{computed.chlorineCorrectiveMl} ml</p>
+            </article>
+          </div>
           <div className="actions">
-            <button className="btn-primary" onClick={() => setScreen("ph-stage1")} type="button">
-              Guia pH etapa 1
+            <button
+              className={prioritizeChlorine ? "btn-secondary" : "btn-primary"}
+              onClick={() => setScreen("ph-stage1")}
+              type="button"
+            >
+              {computed.phStatus === "ok" ? "Guia pH (opcional)" : "Guia pH etapa 1"}
             </button>
-            <button className="btn-secondary" onClick={() => setScreen("chlorine-correction")} type="button">
+            <button
+              className={prioritizeChlorine ? "btn-primary" : "btn-secondary"}
+              onClick={() => setScreen("chlorine-correction")}
+              type="button"
+            >
               Guia cloro
             </button>
             <button className="btn-secondary" onClick={() => setScreen("new-chlorine")} type="button">
@@ -431,9 +645,10 @@ export function App() {
               Continuar
             </button>
             <button className="btn-secondary" onClick={() => setScreen("home")} type="button">
-              Finalizar
+              Volver
             </button>
           </div>
+          <p className="inline-note">No se guardara la sesion si vuelves al inicio.</p>
         </section>
       ) : null}
 
@@ -679,6 +894,20 @@ export function App() {
             </button>
           </div>
         </section>
+      ) : null}
+
+      {screen !== "home" ? (
+        <nav className="quick-nav" aria-label="Atajos">
+          <button className="chip-btn" onClick={() => setScreen("home")} type="button">
+            Inicio
+          </button>
+          <button className="chip-btn" onClick={() => setScreen("help")} type="button">
+            Ayuda
+          </button>
+          <button className="chip-btn" onClick={() => setScreen("history")} type="button">
+            Historial
+          </button>
+        </nav>
       ) : null}
     </main>
   );
