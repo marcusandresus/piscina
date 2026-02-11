@@ -376,5 +376,3 @@ Casos base recomendados para validar cálculo y redondeo visual (ml enteros en U
 Especialmente pH: siempre en dos etapas.
 
 ---
-
-Fin

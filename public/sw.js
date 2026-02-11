@@ -1,4 +1,4 @@
-const CACHE_NAME = "piscina-pwa-v1";
+const CACHE_NAME = "piscina-pwa-v2";
 const scopeUrl = new URL(self.registration.scope);
 const basePath = scopeUrl.pathname.endsWith("/") ? scopeUrl.pathname : `${scopeUrl.pathname}/`;
 const INDEX_URL = `${basePath}index.html`;
@@ -45,6 +45,26 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (requestUrl.origin === self.location.origin) {
+    // For icons/manifest/favicon we prefer fresh network assets
+    // so updates in GitHub Pages are reflected without manual cache clearing.
+    const isIconAsset =
+      requestUrl.pathname.includes("/icons/") ||
+      requestUrl.pathname.endsWith("/favicon.ico");
+    const isManifest = requestUrl.pathname.endsWith("/manifest.webmanifest");
+
+    if (isIconAsset || isManifest) {
+      event.respondWith(
+        fetch(event.request)
+          .then((networkResponse) => {
+            const cloned = networkResponse.clone();
+            void caches.open(CACHE_NAME).then((cache) => cache.put(event.request, cloned));
+            return networkResponse;
+          })
+          .catch(() => caches.match(event.request))
+      );
+      return;
+    }
+
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
         if (cachedResponse) {

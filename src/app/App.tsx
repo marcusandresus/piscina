@@ -496,7 +496,7 @@ export function App() {
         <div className="title-row">
           <img
             className="app-logo"
-            src={`${import.meta.env.BASE_URL}icons/icon-128.png`}
+            src={`${import.meta.env.BASE_URL}icons/icon-128x128.png`}
             alt="Icono Piscina PWA"
           />
           <h1 className="app-title">Piscina PWA</h1>
