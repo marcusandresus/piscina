@@ -32,12 +32,17 @@ type Screen =
   | "history"
   | "settings";
 
+type ReminderMinutes = 30 | 45 | 60;
+
 interface DraftSessionInput {
   waterHeightCm: number | null;
   measuredPh: number | null;
   appliedPhStage1Ml: number | null;
   measuredPhIntermediate: number | null;
   measuredChlorinePpm: number | null;
+  waitReminderMinutes: ReminderMinutes;
+  stage1AppliedAtIso: string | null;
+  waitReminderNotified: boolean;
 }
 
 interface PostApplicationDraft {
@@ -66,6 +71,9 @@ const UI_STATE_KEY = "piscina-ui-state-v1";
 const PH_CHART_MIN = 6.8;
 const PH_CHART_MAX = 8.2;
 const TA_SENSITIVITY_LEVELS = [60, 80, 100, 120, 140];
+const REMINDER_OPTIONS: ReminderMinutes[] = [30, 45, 60];
+const DEFAULT_REMINDER_MINUTES: ReminderMinutes = 45;
+const PH_MARKER_MIN_GAP_PCT = 8;
 const SESSION_FLOW_SCREENS: Screen[] = [
   "results",
   "ph-stage1",
@@ -73,6 +81,26 @@ const SESSION_FLOW_SCREENS: Screen[] = [
   "chlorine-correction",
   "post-checklist"
 ];
+
+function createDefaultDraft(): DraftSessionInput {
+  return {
+    waterHeightCm: null,
+    measuredPh: null,
+    appliedPhStage1Ml: null,
+    measuredPhIntermediate: null,
+    measuredChlorinePpm: null,
+    waitReminderMinutes: DEFAULT_REMINDER_MINUTES,
+    stage1AppliedAtIso: null,
+    waitReminderNotified: false
+  };
+}
+
+function parseReminderMinutes(value: unknown): ReminderMinutes {
+  if (value === 30 || value === 45 || value === 60) {
+    return value;
+  }
+  return DEFAULT_REMINDER_MINUTES;
+}
 
 function isScreen(value: unknown): value is Screen {
   if (typeof value !== "string") {
@@ -144,15 +172,11 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [draft, setDraft] = useState<DraftSessionInput>({
-    waterHeightCm: null,
-    measuredPh: null,
-    appliedPhStage1Ml: null,
-    measuredPhIntermediate: null,
-    measuredChlorinePpm: null
-  });
+  const [draft, setDraft] = useState<DraftSessionInput>(createDefaultDraft);
   const [postDraft, setPostDraft] = useState<PostApplicationDraft>(defaultPostApplicationDraft);
   const [settingsDraft, setSettingsDraft] = useState<PoolConfig | null>(null);
+  const [reminderMessage, setReminderMessage] = useState<string | null>(null);
+  const [clockNowMs, setClockNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     void (async () => {
@@ -182,6 +206,7 @@ export function App() {
           }
 
           const restoredDraft: DraftSessionInput = {
+            ...createDefaultDraft(),
             waterHeightCm:
               typeof restored.draft?.waterHeightCm === "number"
                 ? restored.draft.waterHeightCm
@@ -199,7 +224,13 @@ export function App() {
             measuredChlorinePpm:
               typeof restored.draft?.measuredChlorinePpm === "number"
                 ? restored.draft.measuredChlorinePpm
-                : null
+                : null,
+            waitReminderMinutes: parseReminderMinutes(restored.draft?.waitReminderMinutes),
+            stage1AppliedAtIso:
+              typeof restored.draft?.stage1AppliedAtIso === "string"
+                ? restored.draft.stage1AppliedAtIso
+                : null,
+            waitReminderNotified: Boolean(restored.draft?.waitReminderNotified)
           };
 
           const restoredPostDraft: PostApplicationDraft = {
@@ -327,7 +358,10 @@ export function App() {
     }
 
     const appliedStage1Ml = draft.appliedPhStage1Ml ?? computed.stage1PhMl;
-    const maxDoseMl = Math.max(appliedStage1Ml * 2, computed.totalPhMlRaw * 1.6, 40);
+    const maxDoseMl = computed.totalPhMlRaw;
+    if (maxDoseMl <= 0) {
+      return null;
+    }
     const pointCount = 11;
     const doses = Array.from({ length: pointCount }, (_, index) => (maxDoseMl * index) / (pointCount - 1));
 
@@ -348,6 +382,7 @@ export function App() {
     return {
       doses,
       maxDoseMl,
+      stage1DoseMl: Math.max(0, Math.min(appliedStage1Ml, maxDoseMl)),
       curves
     };
   }, [computed, config, draft.appliedPhStage1Ml, draft.measuredPh]);
@@ -355,6 +390,125 @@ export function App() {
   const latest = sessions[0];
   const prioritizeChlorine =
     computed !== null && computed.phStatus === "ok" && computed.chlorineStatus !== "ok";
+
+  const waitReminderDueMs = useMemo(() => {
+    if (!draft.stage1AppliedAtIso) {
+      return null;
+    }
+
+    const stage1AtMs = Date.parse(draft.stage1AppliedAtIso);
+    if (!Number.isFinite(stage1AtMs)) {
+      return null;
+    }
+
+    return stage1AtMs + draft.waitReminderMinutes * 60_000;
+  }, [draft.stage1AppliedAtIso, draft.waitReminderMinutes]);
+
+  const waitReminderRemainingMs =
+    waitReminderDueMs === null ? null : Math.max(0, waitReminderDueMs - clockNowMs);
+
+  const waitChartMarkers = useMemo(() => {
+    if (!phStageInsights || draft.measuredPh === null) {
+      return [];
+    }
+
+    const markers: Array<{ key: string; className: string; label: string; phValue: number }> = [
+      {
+        key: "initial",
+        className: "ph-marker-start",
+        label: `Inicial ${toFixedNumber(draft.measuredPh, 2)}`,
+        phValue: draft.measuredPh
+      },
+      {
+        key: "estimated-stage1",
+        className: "ph-marker-estimated",
+        label: `Estimado etapa 1 ${toFixedNumber(phStageInsights.estimatedAfterStage1, 2)}`,
+        phValue: phStageInsights.estimatedAfterStage1
+      }
+    ];
+
+    if (draft.measuredPhIntermediate !== null && isPhInRange(draft.measuredPhIntermediate)) {
+      markers.push({
+        key: "intermediate",
+        className: "ph-marker-measured",
+        label: `Medido ${toFixedNumber(draft.measuredPhIntermediate, 2)}`,
+        phValue: draft.measuredPhIntermediate
+      });
+    }
+
+    const positioned = markers
+      .map((marker) => ({
+        ...marker,
+        leftPct: ((Math.min(PH_CHART_MAX, Math.max(PH_CHART_MIN, marker.phValue)) - PH_CHART_MIN) /
+          (PH_CHART_MAX - PH_CHART_MIN)) *
+          100
+      }))
+      .sort((a, b) => a.leftPct - b.leftPct);
+
+    const laneLastLeft: number[] = [];
+    return positioned.map((marker) => {
+      let lane = 0;
+      while (
+        typeof laneLastLeft[lane] === "number" &&
+        marker.leftPct - laneLastLeft[lane] < PH_MARKER_MIN_GAP_PCT
+      ) {
+        lane += 1;
+      }
+      laneLastLeft[lane] = marker.leftPct;
+
+      return {
+        ...marker,
+        lane
+      };
+    });
+  }, [draft.measuredPh, draft.measuredPhIntermediate, phStageInsights]);
+
+  useEffect(() => {
+    if (screen !== "wait" || waitReminderDueMs === null || draft.waitReminderNotified) {
+      return;
+    }
+
+    const timerMs = waitReminderDueMs - Date.now();
+
+    const notifyReminder = () => {
+      const title = "Piscina PWA";
+      const body = `Pasaron ${draft.waitReminderMinutes} minutos. Repite la medicion de pH antes de la etapa 2.`;
+
+      if ("Notification" in window && Notification.permission === "granted") {
+        new Notification(title, { body });
+      } else {
+        window.alert(body);
+      }
+
+      setReminderMessage(body);
+      setDraft((prev) =>
+        prev.waitReminderNotified
+          ? prev
+          : {
+              ...prev,
+              waitReminderNotified: true
+            }
+      );
+    };
+
+    if (timerMs <= 0) {
+      notifyReminder();
+      return;
+    }
+
+    const timeoutId = window.setTimeout(notifyReminder, timerMs);
+    return () => window.clearTimeout(timeoutId);
+  }, [draft.waitReminderMinutes, draft.waitReminderNotified, screen, waitReminderDueMs]);
+
+  useEffect(() => {
+    if (screen !== "wait" || waitReminderDueMs === null || draft.waitReminderNotified) {
+      return;
+    }
+
+    setClockNowMs(Date.now());
+    const intervalId = window.setInterval(() => setClockNowMs(Date.now()), 15_000);
+    return () => window.clearInterval(intervalId);
+  }, [draft.waitReminderNotified, screen, waitReminderDueMs]);
 
   useEffect(() => {
     if (!config || loading) {
@@ -384,6 +538,31 @@ export function App() {
     const clamped = Math.min(PH_CHART_MAX, Math.max(PH_CHART_MIN, phValue));
     const left = ((clamped - PH_CHART_MIN) / (PH_CHART_MAX - PH_CHART_MIN)) * 100;
     return { left: `${left}%` };
+  }
+
+  function phScaleTickStyle(phValue: number, edge: "start" | "middle" | "end"): CSSProperties {
+    const clamped = Math.min(PH_CHART_MAX, Math.max(PH_CHART_MIN, phValue));
+    const left = ((clamped - PH_CHART_MIN) / (PH_CHART_MAX - PH_CHART_MIN)) * 100;
+    return {
+      left: `${left}%`,
+      transform:
+        edge === "start"
+          ? "translateX(0)"
+          : edge === "end"
+            ? "translateX(-100%)"
+            : "translateX(-50%)"
+    };
+  }
+
+  function formatWaitRemaining(ms: number | null): string {
+    if (ms === null) {
+      return "";
+    }
+
+    const totalSeconds = Math.ceil(ms / 1000);
+    const minutes = Math.floor(totalSeconds / 60);
+    const seconds = totalSeconds % 60;
+    return `${minutes}:${String(seconds).padStart(2, "0")}`;
   }
 
   async function saveSession(): Promise<void> {
@@ -440,14 +619,9 @@ export function App() {
   }
 
   function startNewSession(): void {
-    setDraft({
-      waterHeightCm: null,
-      measuredPh: null,
-      appliedPhStage1Ml: null,
-      measuredPhIntermediate: null,
-      measuredChlorinePpm: null
-    });
+    setDraft(createDefaultDraft());
     setError(null);
+    setReminderMessage(null);
     setPostDraft(defaultPostApplicationDraft);
     setScreen("new-height");
     localStorage.removeItem(UI_STATE_KEY);
@@ -627,7 +801,9 @@ export function App() {
                   ...prev,
                   waterHeightCm: Number(event.target.value),
                   appliedPhStage1Ml: null,
-                  measuredPhIntermediate: null
+                  measuredPhIntermediate: null,
+                  stage1AppliedAtIso: null,
+                  waitReminderNotified: false
                 }))
               }
             />
@@ -665,7 +841,9 @@ export function App() {
                   ...prev,
                   measuredPh: Number(event.target.value),
                   appliedPhStage1Ml: null,
-                  measuredPhIntermediate: null
+                  measuredPhIntermediate: null,
+                  stage1AppliedAtIso: null,
+                  waitReminderNotified: false
                 }))
               }
             />
@@ -790,10 +968,14 @@ export function App() {
             <button
               className="btn-primary"
               onClick={() => {
+                const nowIso = new Date().toISOString();
                 setDraft((prev) => ({
                   ...prev,
-                  appliedPhStage1Ml: prev.appliedPhStage1Ml ?? computed.stage1PhMl
+                  appliedPhStage1Ml: prev.appliedPhStage1Ml ?? computed.stage1PhMl,
+                  stage1AppliedAtIso: prev.stage1AppliedAtIso ?? nowIso,
+                  waitReminderNotified: false
                 }));
+                setReminderMessage(null);
                 setScreen("wait");
               }}
               type="button"
@@ -809,11 +991,57 @@ export function App() {
 
       {screen === "wait" && computed && phStageInsights ? (
         <section className="card">
-          <h2 className="section-title">Esperar 30-60 minutos</h2>
+          <h2 className="section-title">Esperar antes de medir de nuevo</h2>
           <p>Luego repetir medicion de pH antes de la etapa 2.</p>
           <p className="inline-note">
             Referencia: este rango aplica a piscinas de poco volumen (por ejemplo, &lt; 5 m3).
           </p>
+          <label className="field-label">
+            Recordatorio de espera
+            <select
+              className="field-input"
+              value={draft.waitReminderMinutes}
+              onChange={(event) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  waitReminderMinutes: parseReminderMinutes(Number(event.target.value)),
+                  waitReminderNotified: false
+                }))
+              }
+            >
+              {REMINDER_OPTIONS.map((minutes) => (
+                <option key={minutes} value={minutes}>
+                  {minutes} minutos
+                </option>
+              ))}
+            </select>
+          </label>
+          {waitReminderDueMs !== null ? (
+            <p className="inline-note">
+              Alarma programada para: {new Date(waitReminderDueMs).toLocaleTimeString()} (
+              {formatWaitRemaining(waitReminderRemainingMs)} restantes)
+            </p>
+          ) : null}
+          {"Notification" in window && Notification.permission !== "granted" ? (
+            <button
+              className="btn-secondary"
+              type="button"
+              onClick={() => {
+                void Notification.requestPermission().then((permission) => {
+                  if (permission === "granted") {
+                    setReminderMessage("Notificaciones activadas para este navegador.");
+                  } else {
+                    setReminderMessage(
+                      "Notificaciones bloqueadas. Se usara una alerta dentro de la app."
+                    );
+                  }
+                });
+              }}
+            >
+              Activar notificaciones del navegador
+            </button>
+          ) : null}
+          {reminderMessage ? <p className="inline-note">{reminderMessage}</p> : null}
           <label className="field-label">
             Dosis aplicada en etapa 1 (ml)
             <input
@@ -830,7 +1058,7 @@ export function App() {
           <div className="ph-chart-wrap" aria-label="Grafico de impacto pH etapa 1">
             <h3 className="chart-title">Grafico 1: Impacto estimado de la etapa 1</h3>
             <p className="chart-subtitle">
-              Eje X: pH. Compara pH inicial, pH estimado tras la dosis aplicada y pH intermedio medido.
+              Eje X: pH. Compara pH inicial, pH estimado tras la dosis de etapa 1 y pH intermedio medido.
             </p>
             <div className="ph-chart">
               <div
@@ -840,33 +1068,34 @@ export function App() {
                   width: `${((config.targets.phMax - config.targets.phMin) / (PH_CHART_MAX - PH_CHART_MIN)) * 100}%`
                 }}
               />
-              <span className="ph-marker ph-marker-start" style={phMarkerStyle(draft.measuredPh!)}>
-                <span className="ph-marker-label">Inicial {toFixedNumber(draft.measuredPh!, 2)}</span>
-              </span>
-              <span
-                className="ph-marker ph-marker-estimated"
-                style={phMarkerStyle(phStageInsights.estimatedAfterStage1)}
-              >
-                <span className="ph-marker-label">
-                  Estimado {toFixedNumber(phStageInsights.estimatedAfterStage1, 2)}
-                </span>
-              </span>
-              {draft.measuredPhIntermediate !== null && isPhInRange(draft.measuredPhIntermediate) ? (
+              {waitChartMarkers.map((marker) => (
                 <span
-                  className="ph-marker ph-marker-measured"
-                  style={phMarkerStyle(draft.measuredPhIntermediate)}
+                  key={marker.key}
+                  className={`ph-marker ${marker.className}`}
+                  style={phMarkerStyle(marker.phValue)}
                 >
-                  <span className="ph-marker-label">
-                    Medido {toFixedNumber(draft.measuredPhIntermediate, 2)}
+                  <span
+                    className="ph-marker-label"
+                    style={{ top: `${0.2 + marker.lane * 1.15}rem` }}
+                  >
+                    {marker.label}
                   </span>
                 </span>
-              ) : null}
+              ))}
             </div>
             <div className="ph-chart-scale">
-              <span>{PH_CHART_MIN}</span>
-              <span>{config.targets.phMin}</span>
-              <span>{config.targets.phMax}</span>
-              <span>{PH_CHART_MAX}</span>
+              <span className="ph-scale-tick" style={phScaleTickStyle(PH_CHART_MIN, "start")}>
+                {PH_CHART_MIN}
+              </span>
+              <span className="ph-scale-tick" style={phScaleTickStyle(config.targets.phMin, "middle")}>
+                {config.targets.phMin}
+              </span>
+              <span className="ph-scale-tick" style={phScaleTickStyle(config.targets.phMax, "middle")}>
+                {config.targets.phMax}
+              </span>
+              <span className="ph-scale-tick" style={phScaleTickStyle(PH_CHART_MAX, "end")}>
+                {PH_CHART_MAX}
+              </span>
             </div>
             <p className="axis-label">Eje X (pH)</p>
           </div>
@@ -874,12 +1103,20 @@ export function App() {
             <div className="ph-chart-wrap" aria-label="Grafico de sensibilidad de pH por TA">
               <h3 className="chart-title">Grafico 2: Sensibilidad por TA estimada</h3>
               <p className="chart-subtitle">
-                Eje X: dosis de HCl (ml). Eje Y: pH resultante estimado. Cada curva usa un TA distinto.
+                Eje X: dosis de HCl (ml) hasta la correccion total calculada. Eje Y: pH resultante
+                estimado. La linea vertical marca la dosis aplicada en etapa 1.
               </p>
               <svg className="ta-sensitivity-chart" viewBox="0 0 360 220" role="img">
                 <title>Curvas de pH estimado segun dosis de HCl y TA</title>
                 <line className="axis-line" x1="44" y1="16" x2="44" y2="186" />
                 <line className="axis-line" x1="44" y1="186" x2="344" y2="186" />
+                <line
+                  className="target-line"
+                  x1={44 + (phSensitivity.stage1DoseMl / phSensitivity.maxDoseMl) * 300}
+                  y1="16"
+                  x2={44 + (phSensitivity.stage1DoseMl / phSensitivity.maxDoseMl) * 300}
+                  y2="186"
+                />
                 <line
                   className="target-line"
                   x1="44"
@@ -929,6 +1166,14 @@ export function App() {
                 })}
                 <text className="axis-text" x="44" y="205">
                   0
+                </text>
+                <text
+                  className="axis-text"
+                  x={44 + (phSensitivity.stage1DoseMl / phSensitivity.maxDoseMl) * 300}
+                  y="205"
+                  textAnchor="middle"
+                >
+                  E1 {toFixedNumber(phSensitivity.stage1DoseMl, 0)} ml
                 </text>
                 <text className="axis-text" x="302" y="205">
                   {toFixedNumber(phSensitivity.maxDoseMl, 0)} ml

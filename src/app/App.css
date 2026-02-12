@@ -375,7 +375,7 @@ body {
 
 .ph-chart {
   position: relative;
-  height: 4.25rem;
+  height: 5.8rem;
   border: 1px solid var(--line);
   border-radius: 0.7rem;
   background: linear-gradient(90deg, #ffe8e8 0%, #fff6d8 35%, #e7f6e8 50%, #fff6d8 65%, #ffe8e8 100%);
@@ -425,12 +425,18 @@ body {
 }
 
 .ph-chart-scale {
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 1rem;
   margin-top: 0.28rem;
   font-size: 0.78rem;
   color: #63717d;
   font-weight: 700;
+}
+
+.ph-scale-tick {
+  position: absolute;
+  top: 0;
+  white-space: nowrap;
 }
 
 .axis-label {
