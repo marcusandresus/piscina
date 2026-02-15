@@ -98,6 +98,7 @@ const TA_SENSITIVITY_LEVELS = [60, 80, 100, 120, 140];
 const REMINDER_OPTIONS: ReminderMinutes[] = [30, 45, 60];
 const DEFAULT_REMINDER_MINUTES: ReminderMinutes = 45;
 const PH_MARKER_MIN_GAP_PCT = 8;
+const HIGH_DAYLIGHT_LOSS_PPM = 1.0;
 const SESSION_FLOW_SCREENS: Screen[] = [
   "results",
   "ph-stage1",
@@ -141,6 +142,18 @@ function createDefaultQuickCheckDraft(): QuickCheckDraft {
     moment: "start-day",
     notes: ""
   };
+}
+
+function getLocalDateKey(timestamp: string): string {
+  const date = new Date(timestamp);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
 }
 
 function parseReminderMinutes(value: unknown): ReminderMinutes {
@@ -279,7 +292,11 @@ export function App() {
                   : null
             }));
           }
+        } catch {
+          localStorage.removeItem(STARTUP_STATE_KEY);
+        }
 
+        try {
           const rawState = localStorage.getItem(UI_STATE_KEY);
           if (!rawState) {
             return;
@@ -558,6 +575,67 @@ export function App() {
       avgDaylight
     };
   }, [sessions]);
+  const fcTrend = useMemo(() => {
+    const checks = sessions
+      .filter(
+        (session): session is Session & { kind: "check"; checkMoment: CheckMoment } =>
+          session.kind === "check" &&
+          (session.checkMoment === "start-day" ||
+            session.checkMoment === "sun-hours" ||
+            session.checkMoment === "night")
+      )
+      .slice()
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+    const byDay = new Map<
+      string,
+      { label: string; startDay: number | null; sunHours: number | null; night: number | null }
+    >();
+
+    for (const check of checks) {
+      const key = getLocalDateKey(check.timestamp);
+      if (!key) {
+        continue;
+      }
+
+      const day = byDay.get(key) ?? {
+        label: key.slice(5),
+        startDay: null,
+        sunHours: null,
+        night: null
+      };
+
+      if (check.checkMoment === "start-day") {
+        day.startDay = check.measuredChlorinePpm;
+      } else if (check.checkMoment === "sun-hours") {
+        day.sunHours = check.measuredChlorinePpm;
+      } else if (check.checkMoment === "night") {
+        day.night = check.measuredChlorinePpm;
+      }
+
+      byDay.set(key, day);
+    }
+
+    const days = [...byDay.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-7)
+      .map(([, value]) => value);
+
+    return {
+      days,
+      hasData: days.some((day) => day.startDay !== null || day.sunHours !== null || day.night !== null)
+    };
+  }, [sessions]);
+
+  const highDaylightLoss =
+    (typeof chlorineLossStats.avgDaylight === "number" &&
+      chlorineLossStats.avgDaylight >= HIGH_DAYLIGHT_LOSS_PPM) ||
+    (typeof chlorineLossStats.lastDaylight === "number" &&
+      chlorineLossStats.lastDaylight >= HIGH_DAYLIGHT_LOSS_PPM);
+  const lowCyaDetected =
+    typeof startupDraft.measuredCyaPpm === "number" && startupDraft.measuredCyaPpm < 30;
+  const coverAbsent = config?.chemistry.usesCover === false;
+  const daylightLossRiskAlert = highDaylightLoss && (lowCyaDetected || coverAbsent);
 
   const waitReminderDueMs = useMemo(() => {
     if (!draft.stage1AppliedAtIso) {
@@ -736,6 +814,32 @@ export function App() {
     const minutes = Math.floor(totalSeconds / 60);
     const seconds = totalSeconds % 60;
     return `${minutes}:${String(seconds).padStart(2, "0")}`;
+  }
+
+  function buildFcTrendLine(
+    days: Array<{ startDay: number | null; sunHours: number | null; night: number | null }>,
+    selector: "startDay" | "sunHours" | "night"
+  ): string {
+    const count = days.length;
+    if (count === 0) {
+      return "";
+    }
+
+    const stepX = count === 1 ? 0 : 280 / (count - 1);
+    const yFromPpm = (value: number) => 20 + ((10 - Math.min(10, Math.max(0, value))) / 10) * 140;
+
+    return days
+      .map((day, index) => {
+        const value = day[selector];
+        if (value === null) {
+          return null;
+        }
+        const x = 40 + index * stepX;
+        const y = yFromPpm(value);
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .filter((value): value is string => value !== null)
+      .join(" ");
   }
 
   async function saveSession(): Promise<void> {
@@ -1025,6 +1129,69 @@ export function App() {
               </p>
             </article>
           </div>
+          {daylightLossRiskAlert ? (
+            <p className="status-pill status-danger">
+              Alerta: perdida diurna alta. Probable impacto por CYA bajo y/o uso sin cubierta.
+            </p>
+          ) : null}
+          {fcTrend.hasData ? (
+            <div className="ph-chart-wrap" aria-label="Grafico temporal de cloro libre por dia">
+              <h3 className="chart-title">Grafico FC por dia (AM / Sol / Noche)</h3>
+              <p className="chart-subtitle">
+                Eje X: dias recientes. Eje Y: cloro medido (ppm). Cada linea usa mediciones sin
+                ajuste.
+              </p>
+              <svg className="fc-trend-chart" viewBox="0 0 330 210" role="img">
+                <title>Tendencia de cloro libre por dia y momento</title>
+                <line className="axis-line" x1="40" y1="20" x2="40" y2="160" />
+                <line className="axis-line" x1="40" y1="160" x2="320" y2="160" />
+                <text className="axis-text" x="10" y="24">
+                  10
+                </text>
+                <text className="axis-text" x="14" y="94">
+                  5
+                </text>
+                <text className="axis-text" x="20" y="164">
+                  0
+                </text>
+                <polyline
+                  className="fc-trend-line fc-trend-am"
+                  points={buildFcTrendLine(fcTrend.days, "startDay")}
+                />
+                <polyline
+                  className="fc-trend-line fc-trend-sun"
+                  points={buildFcTrendLine(fcTrend.days, "sunHours")}
+                />
+                <polyline
+                  className="fc-trend-line fc-trend-night"
+                  points={buildFcTrendLine(fcTrend.days, "night")}
+                />
+                {fcTrend.days.map((day, index) => {
+                  const stepX = fcTrend.days.length === 1 ? 0 : 280 / (fcTrend.days.length - 1);
+                  const x = 40 + index * stepX;
+                  return (
+                    <text key={day.label} className="axis-text" x={x} y="176" textAnchor="middle">
+                      {day.label}
+                    </text>
+                  );
+                })}
+              </svg>
+              <div className="chart-legend">
+                <span className="legend-item">
+                  <span className="legend-swatch fc-swatch-am" />
+                  AM
+                </span>
+                <span className="legend-item">
+                  <span className="legend-swatch fc-swatch-sun" />
+                  Sol
+                </span>
+                <span className="legend-item">
+                  <span className="legend-swatch fc-swatch-night" />
+                  Noche
+                </span>
+              </div>
+            </div>
+          ) : null}
           <div className="actions">
             <button className="btn-primary" onClick={startNewSession} type="button">
               Nueva medicion
@@ -2042,6 +2209,26 @@ export function App() {
                 )
               }
             />
+          </label>
+          <label className="check-item">
+            <input
+              type="checkbox"
+              checked={settingsDraft.chemistry.usesCover}
+              onChange={(event) =>
+                setSettingsDraft((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        chemistry: {
+                          ...prev.chemistry,
+                          usesCover: event.target.checked
+                        }
+                      }
+                    : prev
+                )
+              }
+            />
+            Uso cubierta cuando la piscina no esta en uso
           </label>
           <label className="field-label">
             pH objetivo minimo

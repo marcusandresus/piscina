@@ -20,6 +20,7 @@ export interface PoolConfig {
   };
   chemistry: {
     estimatedAlkalinityPpm: number;
+    usesCover: boolean;
   };
   targets: {
     phMin: number;

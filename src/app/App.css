@@ -459,6 +459,14 @@ body {
   background: #fff;
 }
 
+.fc-trend-chart {
+  width: 100%;
+  height: auto;
+  border: 1px solid var(--line);
+  border-radius: 0.7rem;
+  background: #fff;
+}
+
 .axis-line {
   stroke: #60717d;
   stroke-width: 1.4;
@@ -480,6 +488,35 @@ body {
   fill: none;
   stroke: currentcolor;
   stroke-width: 2.2;
+}
+
+.fc-trend-line {
+  fill: none;
+  stroke-width: 2.4;
+}
+
+.fc-trend-am {
+  stroke: #1e88e5;
+}
+
+.fc-trend-sun {
+  stroke: #f57c00;
+}
+
+.fc-trend-night {
+  stroke: #3949ab;
+}
+
+.fc-swatch-am {
+  background: #1e88e5;
+}
+
+.fc-swatch-sun {
+  background: #f57c00;
+}
+
+.fc-swatch-night {
+  background: #3949ab;
 }
 
 .chart-legend {

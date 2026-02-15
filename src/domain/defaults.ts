@@ -17,7 +17,8 @@ export const defaultPoolConfig: PoolConfig = {
     unit: "%"
   },
   chemistry: {
-    estimatedAlkalinityPpm: 100
+    estimatedAlkalinityPpm: 100,
+    usesCover: false
   },
   targets: {
     phMin: 7.2,

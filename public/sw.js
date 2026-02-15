@@ -1,4 +1,4 @@
-const CACHE_NAME = "piscina-pwa-v2";
+const CACHE_NAME = "piscina-pwa-v3";
 const scopeUrl = new URL(self.registration.scope);
 const basePath = scopeUrl.pathname.endsWith("/") ? scopeUrl.pathname : `${scopeUrl.pathname}/`;
 const INDEX_URL = `${basePath}index.html`;
@@ -51,8 +51,9 @@ self.addEventListener("fetch", (event) => {
       requestUrl.pathname.includes("/icons/") ||
       requestUrl.pathname.endsWith("/favicon.ico");
     const isManifest = requestUrl.pathname.endsWith("/manifest.webmanifest");
+    const isBuildAsset = requestUrl.pathname.includes("/assets/");
 
-    if (isIconAsset || isManifest) {
+    if (isIconAsset || isManifest || isBuildAsset) {
       event.respondWith(
         fetch(event.request)
           .then((networkResponse) => {
