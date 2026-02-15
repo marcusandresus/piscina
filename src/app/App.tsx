@@ -15,15 +15,17 @@ import {
   toFixedNumber
 } from "../domain/calculations";
 import { defaultPoolConfig } from "../domain/defaults";
-import type { PoolConfig, Session } from "../domain/types";
+import type { CheckMoment, PoolConfig, Session } from "../domain/types";
 import "./App.css";
 
 type Screen =
   | "home"
+  | "startup"
   | "help"
   | "new-height"
   | "new-ph"
   | "new-chlorine"
+  | "quick-check"
   | "results"
   | "ph-stage1"
   | "wait"
@@ -57,6 +59,27 @@ interface PersistedUiState {
   screen: Screen;
   draft: DraftSessionInput;
   postDraft: PostApplicationDraft;
+  quickCheckDraft?: QuickCheckDraft;
+}
+
+interface StartupDraft {
+  mode: "basic" | "advanced";
+  measuredPh: number | null;
+  measuredChlorinePpm: number | null;
+  measuredTaPpm: number | null;
+  measuredCyaPpm: number | null;
+  measuredCombinedChlorinePpm: number | null;
+  waterLooksCloudy: boolean;
+  notes: string;
+  completedAtIso: string | null;
+}
+
+interface QuickCheckDraft {
+  waterHeightCm: number | null;
+  measuredPh: number | null;
+  measuredChlorinePpm: number | null;
+  moment: CheckMoment;
+  notes: string;
 }
 
 const defaultPostApplicationDraft: PostApplicationDraft = {
@@ -68,6 +91,7 @@ const defaultPostApplicationDraft: PostApplicationDraft = {
 };
 
 const UI_STATE_KEY = "piscina-ui-state-v1";
+const STARTUP_STATE_KEY = "piscina-startup-state-v1";
 const PH_CHART_MIN = 6.8;
 const PH_CHART_MAX = 8.2;
 const TA_SENSITIVITY_LEVELS = [60, 80, 100, 120, 140];
@@ -95,6 +119,30 @@ function createDefaultDraft(): DraftSessionInput {
   };
 }
 
+function createDefaultStartupDraft(): StartupDraft {
+  return {
+    mode: "basic",
+    measuredPh: null,
+    measuredChlorinePpm: null,
+    measuredTaPpm: null,
+    measuredCyaPpm: null,
+    measuredCombinedChlorinePpm: null,
+    waterLooksCloudy: false,
+    notes: "",
+    completedAtIso: null
+  };
+}
+
+function createDefaultQuickCheckDraft(): QuickCheckDraft {
+  return {
+    waterHeightCm: null,
+    measuredPh: null,
+    measuredChlorinePpm: null,
+    moment: "start-day",
+    notes: ""
+  };
+}
+
 function parseReminderMinutes(value: unknown): ReminderMinutes {
   if (value === 30 || value === 45 || value === 60) {
     return value;
@@ -109,10 +157,12 @@ function isScreen(value: unknown): value is Screen {
 
   return (
     value === "home" ||
+    value === "startup" ||
     value === "help" ||
     value === "new-height" ||
     value === "new-ph" ||
     value === "new-chlorine" ||
+    value === "quick-check" ||
     value === "results" ||
     value === "ph-stage1" ||
     value === "wait" ||
@@ -174,6 +224,8 @@ export function App() {
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftSessionInput>(createDefaultDraft);
   const [postDraft, setPostDraft] = useState<PostApplicationDraft>(defaultPostApplicationDraft);
+  const [startupDraft, setStartupDraft] = useState<StartupDraft>(createDefaultStartupDraft);
+  const [quickCheckDraft, setQuickCheckDraft] = useState<QuickCheckDraft>(createDefaultQuickCheckDraft);
   const [settingsDraft, setSettingsDraft] = useState<PoolConfig | null>(null);
   const [reminderMessage, setReminderMessage] = useState<string | null>(null);
   const [clockNowMs, setClockNowMs] = useState(() => Date.now());
@@ -195,6 +247,39 @@ export function App() {
         setSessions(loadedSessions);
 
         try {
+          const rawStartup = localStorage.getItem(STARTUP_STATE_KEY);
+          if (rawStartup) {
+            const restoredStartup = JSON.parse(rawStartup) as Partial<StartupDraft>;
+            setStartupDraft((prev) => ({
+              ...prev,
+              mode: restoredStartup.mode === "advanced" ? "advanced" : "basic",
+              measuredPh:
+                typeof restoredStartup.measuredPh === "number" ? restoredStartup.measuredPh : null,
+              measuredChlorinePpm:
+                typeof restoredStartup.measuredChlorinePpm === "number"
+                  ? restoredStartup.measuredChlorinePpm
+                  : null,
+              measuredTaPpm:
+                typeof restoredStartup.measuredTaPpm === "number"
+                  ? restoredStartup.measuredTaPpm
+                  : null,
+              measuredCyaPpm:
+                typeof restoredStartup.measuredCyaPpm === "number"
+                  ? restoredStartup.measuredCyaPpm
+                  : null,
+              measuredCombinedChlorinePpm:
+                typeof restoredStartup.measuredCombinedChlorinePpm === "number"
+                  ? restoredStartup.measuredCombinedChlorinePpm
+                  : null,
+              waterLooksCloudy: Boolean(restoredStartup.waterLooksCloudy),
+              notes: typeof restoredStartup.notes === "string" ? restoredStartup.notes : "",
+              completedAtIso:
+                typeof restoredStartup.completedAtIso === "string"
+                  ? restoredStartup.completedAtIso
+                  : null
+            }));
+          }
+
           const rawState = localStorage.getItem(UI_STATE_KEY);
           if (!rawState) {
             return;
@@ -240,9 +325,35 @@ export function App() {
             waitRespected: Boolean(restored.postDraft?.waitRespected),
             notes: typeof restored.postDraft?.notes === "string" ? restored.postDraft.notes : ""
           };
+          const restoredQuickCheckDraft: QuickCheckDraft = {
+            ...createDefaultQuickCheckDraft(),
+            waterHeightCm:
+              typeof restored.quickCheckDraft?.waterHeightCm === "number"
+                ? restored.quickCheckDraft.waterHeightCm
+                : null,
+            measuredPh:
+              typeof restored.quickCheckDraft?.measuredPh === "number"
+                ? restored.quickCheckDraft.measuredPh
+                : null,
+            measuredChlorinePpm:
+              typeof restored.quickCheckDraft?.measuredChlorinePpm === "number"
+                ? restored.quickCheckDraft.measuredChlorinePpm
+                : null,
+            moment:
+              restored.quickCheckDraft?.moment === "sun-hours" ||
+              restored.quickCheckDraft?.moment === "night" ||
+              restored.quickCheckDraft?.moment === "start-day"
+                ? restored.quickCheckDraft.moment
+                : "start-day",
+            notes:
+              typeof restored.quickCheckDraft?.notes === "string"
+                ? restored.quickCheckDraft.notes
+                : ""
+          };
 
           setDraft(restoredDraft);
           setPostDraft(restoredPostDraft);
+          setQuickCheckDraft(restoredQuickCheckDraft);
 
           if (
             SESSION_FLOW_SCREENS.includes(restored.screen) &&
@@ -390,6 +501,63 @@ export function App() {
   const latest = sessions[0];
   const prioritizeChlorine =
     computed !== null && computed.phStatus === "ok" && computed.chlorineStatus !== "ok";
+  const startupNeedsAttention = startupDraft.completedAtIso === null;
+  const startupShockSuggested =
+    startupDraft.waterLooksCloudy ||
+    (typeof startupDraft.measuredChlorinePpm === "number" &&
+      startupDraft.measuredChlorinePpm < (config?.targets.chlorineMinPpm ?? 1)) ||
+    (typeof startupDraft.measuredCombinedChlorinePpm === "number" &&
+      startupDraft.measuredCombinedChlorinePpm >= 0.5);
+
+  const chlorineLossStats = useMemo(() => {
+    const checks = sessions
+      .filter(
+        (session): session is Session & { kind: "check"; checkMoment: CheckMoment } =>
+          session.kind === "check" &&
+          (session.checkMoment === "start-day" ||
+            session.checkMoment === "sun-hours" ||
+            session.checkMoment === "night")
+      )
+      .slice()
+      .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp));
+
+    const overnightLosses: number[] = [];
+    const daylightLosses: number[] = [];
+
+    for (let index = 1; index < checks.length; index += 1) {
+      const previous = checks[index - 1];
+      const current = checks[index];
+      const delta = previous.measuredChlorinePpm - current.measuredChlorinePpm;
+
+      if (previous.checkMoment === "night" && current.checkMoment === "start-day") {
+        overnightLosses.push(delta);
+      }
+
+      if (previous.checkMoment === "start-day" && current.checkMoment === "sun-hours") {
+        daylightLosses.push(delta);
+      }
+    }
+
+    const lastOvernight = overnightLosses.length > 0 ? overnightLosses[overnightLosses.length - 1] : null;
+    const lastDaylight = daylightLosses.length > 0 ? daylightLosses[daylightLosses.length - 1] : null;
+    const avgOvernight =
+      overnightLosses.length > 0
+        ? overnightLosses.reduce((sum, value) => sum + value, 0) / overnightLosses.length
+        : null;
+    const avgDaylight =
+      daylightLosses.length > 0
+        ? daylightLosses.reduce((sum, value) => sum + value, 0) / daylightLosses.length
+        : null;
+
+    return {
+      overnightCount: overnightLosses.length,
+      daylightCount: daylightLosses.length,
+      lastOvernight,
+      lastDaylight,
+      avgOvernight,
+      avgDaylight
+    };
+  }, [sessions]);
 
   const waitReminderDueMs = useMemo(() => {
     if (!draft.stage1AppliedAtIso) {
@@ -518,11 +686,16 @@ export function App() {
     const payload: PersistedUiState = {
       screen,
       draft,
-      postDraft
+      postDraft,
+      quickCheckDraft
     };
 
     localStorage.setItem(UI_STATE_KEY, JSON.stringify(payload));
-  }, [config, draft, loading, postDraft, screen]);
+  }, [config, draft, loading, postDraft, quickCheckDraft, screen]);
+
+  useEffect(() => {
+    localStorage.setItem(STARTUP_STATE_KEY, JSON.stringify(startupDraft));
+  }, [startupDraft]);
 
   function statusTone(value: "ok" | "leve" | "ajuste"): string {
     if (value === "ok") {
@@ -576,6 +749,7 @@ export function App() {
       const newSession: Session = {
         id: crypto.randomUUID(),
         timestamp: new Date().toISOString(),
+        kind: "adjustment",
         waterHeightCm: draft.waterHeightCm!,
         measuredPh: draft.measuredPh!,
         measuredPhIntermediate:
@@ -627,6 +801,84 @@ export function App() {
     localStorage.removeItem(UI_STATE_KEY);
   }
 
+  function startQuickCheck(): void {
+    if (!config) {
+      return;
+    }
+
+    const fallbackHeight =
+      quickCheckDraft.waterHeightCm ??
+      draft.waterHeightCm ??
+      latest?.waterHeightCm ??
+      config.pool.maxHeightCm ??
+      null;
+    setQuickCheckDraft({
+      ...createDefaultQuickCheckDraft(),
+      waterHeightCm: fallbackHeight
+    });
+    setError(null);
+    setScreen("quick-check");
+  }
+
+  async function saveQuickCheck(): Promise<void> {
+    if (!config || saving) {
+      return;
+    }
+
+    if (
+      quickCheckDraft.waterHeightCm === null ||
+      !isHeightInRange(quickCheckDraft.waterHeightCm, config.pool.maxHeightCm)
+    ) {
+      setError("Ingresa una altura valida para la medicion sin ajuste.");
+      return;
+    }
+
+    if (quickCheckDraft.measuredPh === null || !isPhInRange(quickCheckDraft.measuredPh)) {
+      setError("Ingresa un pH valido (6.8 - 8.2).");
+      return;
+    }
+
+    if (
+      quickCheckDraft.measuredChlorinePpm === null ||
+      !isChlorineInRange(quickCheckDraft.measuredChlorinePpm)
+    ) {
+      setError("Ingresa un cloro valido (0 - 10 ppm).");
+      return;
+    }
+
+    const volumeLiters = calculateVolumeLiters(config.pool.diameterM, quickCheckDraft.waterHeightCm);
+
+    setSaving(true);
+    setError(null);
+    try {
+      const quickSession: Session = {
+        id: crypto.randomUUID(),
+        timestamp: new Date().toISOString(),
+        kind: "check",
+        checkMoment: quickCheckDraft.moment,
+        waterHeightCm: quickCheckDraft.waterHeightCm,
+        measuredPh: quickCheckDraft.measuredPh,
+        measuredChlorinePpm: quickCheckDraft.measuredChlorinePpm,
+        calculatedVolumeLiters: toFixedNumber(volumeLiters, 0),
+        requiredPhCorrection: { totalMl: 0, stage1Ml: 0 },
+        requiredChlorineDose: { maintenanceMl: 0, correctiveMl: 0 },
+        appliedDoses: {},
+        notes: quickCheckDraft.notes.trim() || undefined
+      };
+
+      await sessionRepo.save(quickSession);
+      const updatedSessions = await sessionRepo.list();
+      setSessions(updatedSessions);
+      setQuickCheckDraft(createDefaultQuickCheckDraft());
+      setScreen("home");
+      localStorage.removeItem(UI_STATE_KEY);
+    } catch {
+      setError("No se pudo guardar la medicion sin ajuste.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveSettings(): Promise<void> {
     if (!settingsDraft) {
       return;
@@ -657,6 +909,18 @@ export function App() {
     }
   }
 
+  function markStartupCompleted(): void {
+    setStartupDraft((prev) => ({
+      ...prev,
+      completedAtIso: new Date().toISOString()
+    }));
+    setScreen("home");
+  }
+
+  function resetStartup(): void {
+    setStartupDraft(createDefaultStartupDraft());
+  }
+
   if (loading || !config || !settingsDraft) {
     return <main className="app-shell">Cargando configuracion...</main>;
   }
@@ -683,6 +947,16 @@ export function App() {
       {screen === "home" ? (
         <section className="card">
           <h2 className="section-title">Panel de estado</h2>
+          {startupNeedsAttention ? (
+            <p className="inline-note startup-note">
+              Inicio de temporada pendiente: define una base quimica antes de la rutina diaria.
+            </p>
+          ) : (
+            <p className="inline-note">
+              Inicio de temporada completado el{" "}
+              {startupDraft.completedAtIso ? new Date(startupDraft.completedAtIso).toLocaleString() : "-"}.
+            </p>
+          )}
           <div className="metrics-grid">
             <article className="metric">
               <p className="metric-label">Diametro</p>
@@ -712,13 +986,54 @@ export function App() {
                 {new Date(latest.timestamp).toLocaleString()} | pH {latest.measuredPh} | Cl{" "}
                 {latest.measuredChlorinePpm} ppm
               </p>
+              <p className="inline-note">
+                Tipo: {latest.kind === "check" ? "Solo medicion" : "Sesion con ajustes"}
+              </p>
             </div>
           ) : (
             <p>Sin mediciones registradas.</p>
           )}
+          <div className="metrics-grid">
+            <article className="metric">
+              <p className="metric-label">Perdida nocturna de Cl</p>
+              <p className="metric-value">
+                {typeof chlorineLossStats.lastOvernight === "number"
+                  ? `${toFixedNumber(chlorineLossStats.lastOvernight, 2)} ppm`
+                  : "-"}
+              </p>
+              <p className="inline-note">
+                Promedio:{" "}
+                {typeof chlorineLossStats.avgOvernight === "number"
+                  ? `${toFixedNumber(chlorineLossStats.avgOvernight, 2)} ppm`
+                  : "-"}{" "}
+                ({chlorineLossStats.overnightCount} pares)
+              </p>
+            </article>
+            <article className="metric">
+              <p className="metric-label">Perdida en horas de sol</p>
+              <p className="metric-value">
+                {typeof chlorineLossStats.lastDaylight === "number"
+                  ? `${toFixedNumber(chlorineLossStats.lastDaylight, 2)} ppm`
+                  : "-"}
+              </p>
+              <p className="inline-note">
+                Promedio:{" "}
+                {typeof chlorineLossStats.avgDaylight === "number"
+                  ? `${toFixedNumber(chlorineLossStats.avgDaylight, 2)} ppm`
+                  : "-"}{" "}
+                ({chlorineLossStats.daylightCount} pares)
+              </p>
+            </article>
+          </div>
           <div className="actions">
             <button className="btn-primary" onClick={startNewSession} type="button">
               Nueva medicion
+            </button>
+            <button className="btn-secondary" onClick={startQuickCheck} type="button">
+              Medicion sin ajuste
+            </button>
+            <button className="btn-secondary" onClick={() => setScreen("startup")} type="button">
+              Inicio de temporada
             </button>
             <button className="btn-secondary" onClick={() => setScreen("history")} type="button">
               Historial
@@ -780,6 +1095,257 @@ export function App() {
             </button>
             <button className="btn-secondary" onClick={() => setScreen("home")} type="button">
               Volver al inicio
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {screen === "startup" ? (
+        <section className="card">
+          <h2 className="section-title">Inicio de temporada</h2>
+          <p className="inline-note">
+            Usa modo basico si solo cuentas con pH + OTO. El modo avanzado agrega TA/CYA/CC si tienes
+            esas mediciones.
+          </p>
+          <label className="field-label">
+            Modo
+            <select
+              className="field-input"
+              value={startupDraft.mode}
+              onChange={(event) =>
+                setStartupDraft((prev) => ({
+                  ...prev,
+                  mode: event.target.value === "advanced" ? "advanced" : "basic"
+                }))
+              }
+            >
+              <option value="basic">Basico (pH + cloro)</option>
+              <option value="advanced">Avanzado (TA/CYA/CC)</option>
+            </select>
+          </label>
+          <label className="field-label">
+            pH medido
+            <input
+              className="field-input"
+              type="number"
+              min={6.8}
+              max={8.2}
+              step={0.1}
+              value={startupDraft.measuredPh ?? ""}
+              onChange={(event) =>
+                setStartupDraft((prev) => ({
+                  ...prev,
+                  measuredPh: event.target.value === "" ? null : Number(event.target.value)
+                }))
+              }
+            />
+          </label>
+          <label className="field-label">
+            Cloro medido (ppm)
+            <input
+              className="field-input"
+              type="number"
+              min={0}
+              max={10}
+              step={0.1}
+              value={startupDraft.measuredChlorinePpm ?? ""}
+              onChange={(event) =>
+                setStartupDraft((prev) => ({
+                  ...prev,
+                  measuredChlorinePpm:
+                    event.target.value === "" ? null : Number(event.target.value)
+                }))
+              }
+            />
+          </label>
+          {startupDraft.mode === "advanced" ? (
+            <>
+              <label className="field-label">
+                TA medida (ppm)
+                <input
+                  className="field-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={startupDraft.measuredTaPpm ?? ""}
+                  onChange={(event) =>
+                    setStartupDraft((prev) => ({
+                      ...prev,
+                      measuredTaPpm: event.target.value === "" ? null : Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label className="field-label">
+                CYA medido (ppm)
+                <input
+                  className="field-input"
+                  type="number"
+                  min={0}
+                  step={1}
+                  value={startupDraft.measuredCyaPpm ?? ""}
+                  onChange={(event) =>
+                    setStartupDraft((prev) => ({
+                      ...prev,
+                      measuredCyaPpm: event.target.value === "" ? null : Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+              <label className="field-label">
+                Cloro combinado (CC, ppm)
+                <input
+                  className="field-input"
+                  type="number"
+                  min={0}
+                  step={0.1}
+                  value={startupDraft.measuredCombinedChlorinePpm ?? ""}
+                  onChange={(event) =>
+                    setStartupDraft((prev) => ({
+                      ...prev,
+                      measuredCombinedChlorinePpm:
+                        event.target.value === "" ? null : Number(event.target.value)
+                    }))
+                  }
+                />
+              </label>
+            </>
+          ) : null}
+          <label className="check-item">
+            <input
+              type="checkbox"
+              checked={startupDraft.waterLooksCloudy}
+              onChange={(event) =>
+                setStartupDraft((prev) => ({ ...prev, waterLooksCloudy: event.target.checked }))
+              }
+            />
+            Agua turbia o con indicios de algas
+          </label>
+          <label className="field-label">
+            Notas del arranque
+            <textarea
+              className="field-input textarea-input"
+              value={startupDraft.notes}
+              onChange={(event) =>
+                setStartupDraft((prev) => ({ ...prev, notes: event.target.value }))
+              }
+              rows={3}
+            />
+          </label>
+          <p className={startupShockSuggested ? "status-pill status-danger" : "status-pill status-ok"}>
+            {startupShockSuggested
+              ? "Se sugiere shock inicial o correccion intensiva con re-medicion."
+              : "No hay gatillo fuerte de shock inicial con los datos ingresados."}
+          </p>
+          <div className="actions">
+            <button className="btn-primary" onClick={markStartupCompleted} type="button">
+              Marcar inicio completado
+            </button>
+            <button className="btn-secondary" onClick={resetStartup} type="button">
+              Reiniciar formulario
+            </button>
+            <button className="btn-secondary" onClick={() => setScreen("home")} type="button">
+              Volver
+            </button>
+          </div>
+        </section>
+      ) : null}
+
+      {screen === "quick-check" ? (
+        <section className="card">
+          <h2 className="section-title">Medicion sin ajustes</h2>
+          <p className="inline-note">
+            Esta pantalla registra observaciones para comparar perdida de cloro entre noche y horas de
+            sol, sin proponer dosis.
+          </p>
+          <label className="field-label">
+            Momento de la medicion
+            <select
+              className="field-input"
+              value={quickCheckDraft.moment}
+              onChange={(event) =>
+                setQuickCheckDraft((prev) => ({
+                  ...prev,
+                  moment:
+                    event.target.value === "sun-hours" || event.target.value === "night"
+                      ? event.target.value
+                      : "start-day"
+                }))
+              }
+            >
+              <option value="start-day">Inicio del dia</option>
+              <option value="sun-hours">Horas de sol</option>
+              <option value="night">Noche</option>
+            </select>
+          </label>
+          <label className="field-label">
+            Altura actual (cm)
+            <input
+              className="field-input"
+              type="number"
+              min={1}
+              max={config.pool.maxHeightCm ?? 200}
+              value={quickCheckDraft.waterHeightCm ?? ""}
+              onChange={(event) =>
+                setQuickCheckDraft((prev) => ({
+                  ...prev,
+                  waterHeightCm: event.target.value === "" ? null : Number(event.target.value)
+                }))
+              }
+            />
+          </label>
+          <label className="field-label">
+            pH medido
+            <input
+              className="field-input"
+              type="number"
+              min={6.8}
+              max={8.2}
+              step={0.1}
+              value={quickCheckDraft.measuredPh ?? ""}
+              onChange={(event) =>
+                setQuickCheckDraft((prev) => ({
+                  ...prev,
+                  measuredPh: event.target.value === "" ? null : Number(event.target.value)
+                }))
+              }
+            />
+          </label>
+          <label className="field-label">
+            Cloro medido (ppm)
+            <input
+              className="field-input"
+              type="number"
+              min={0}
+              max={10}
+              step={0.1}
+              value={quickCheckDraft.measuredChlorinePpm ?? ""}
+              onChange={(event) =>
+                setQuickCheckDraft((prev) => ({
+                  ...prev,
+                  measuredChlorinePpm:
+                    event.target.value === "" ? null : Number(event.target.value)
+                }))
+              }
+            />
+          </label>
+          <label className="field-label">
+            Notas
+            <textarea
+              className="field-input textarea-input"
+              value={quickCheckDraft.notes}
+              onChange={(event) =>
+                setQuickCheckDraft((prev) => ({ ...prev, notes: event.target.value }))
+              }
+              rows={3}
+            />
+          </label>
+          <div className="actions">
+            <button className="btn-primary" onClick={() => void saveQuickCheck()} disabled={saving} type="button">
+              {saving ? "Guardando..." : "Guardar medicion"}
+            </button>
+            <button className="btn-secondary" onClick={() => setScreen("home")} type="button">
+              Volver
             </button>
           </div>
         </section>
@@ -1338,13 +1904,29 @@ export function App() {
                 Altura {session.waterHeightCm} cm | pH {session.measuredPh} | Cl{" "}
                 {session.measuredChlorinePpm} ppm
               </p>
+              {session.kind === "check" ? (
+                <p>
+                  Tipo: medicion sin ajuste{" "}
+                  {session.checkMoment === "start-day"
+                    ? "(inicio del dia)"
+                    : session.checkMoment === "sun-hours"
+                      ? "(horas de sol)"
+                      : session.checkMoment === "night"
+                        ? "(noche)"
+                        : ""}
+                </p>
+              ) : (
+                <p>Tipo: sesion con ajustes</p>
+              )}
               {typeof session.measuredPhIntermediate === "number" ? (
                 <p>pH intermedio: {session.measuredPhIntermediate}</p>
               ) : null}
-              <p>
-                pH etapa 1: {session.requiredPhCorrection.stage1Ml} ml | Cloro:{" "}
-                {session.requiredChlorineDose.correctiveMl} ml
-              </p>
+              {session.kind !== "check" ? (
+                <p>
+                  pH etapa 1: {session.requiredPhCorrection.stage1Ml} ml | Cloro:{" "}
+                  {session.requiredChlorineDose.correctiveMl} ml
+                </p>
+              ) : null}
               {session.notes ? <p>Notas: {session.notes}</p> : null}
             </article>
           ))}

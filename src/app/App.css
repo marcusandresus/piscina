@@ -358,6 +358,11 @@ body {
   color: #5f6b75;
 }
 
+.startup-note {
+  font-weight: 700;
+  color: #7f1d1d;
+}
+
 .ph-chart-wrap {
   margin-top: 0.9rem;
 }

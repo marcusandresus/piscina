@@ -1,4 +1,6 @@
 export type ChemicalUnit = "%";
+export type SessionKind = "adjustment" | "check";
+export type CheckMoment = "start-day" | "sun-hours" | "night";
 
 export interface PoolConfig {
   id: string;
@@ -30,6 +32,8 @@ export interface PoolConfig {
 export interface Session {
   id: string;
   timestamp: string;
+  kind?: SessionKind;
+  checkMoment?: CheckMoment;
   waterHeightCm: number;
   measuredPh: number;
   measuredPhIntermediate?: number;
