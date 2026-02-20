@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  calculateChlorineDose,
   calculateChlorineDoseMl,
   calculatePhMlPerStep,
   calculatePhCorrectionMl,
+  calculatePhRaiseDose,
   calculateVolumeLiters,
   classifyChlorine,
   classifyPh,
@@ -88,6 +90,31 @@ describe("calculateChlorineDoseMl", () => {
     const volumeLiters = calculateVolumeLiters(3.05, 76);
     const result = calculateChlorineDoseMl(0.2, volumeLiters, 0, 1, 3);
     expect(result).toEqual({ maintenanceMl: 0, correctiveMl: 0 });
+  });
+});
+
+describe("calculateChlorineDose", () => {
+  it("devuelve gramos cuando el producto es granulado", () => {
+    const volumeLiters = calculateVolumeLiters(3.05, 76);
+    const result = calculateChlorineDose(0.2, volumeLiters, 56, "granular-g", 1, 3);
+
+    expect(result.unit).toBe("g");
+    expect(result.maintenance).toBeCloseTo(7.9324092505766, 9);
+    expect(result.corrective).toBeCloseTo(17.847920813797344, 9);
+  });
+});
+
+describe("calculatePhRaiseDose", () => {
+  it("calcula dosis de pH+ cuando el pH esta bajo objetivo", () => {
+    const volumeLiters = calculateVolumeLiters(3.05, 76);
+    const dose = calculatePhRaiseDose(7.0, volumeLiters, 100, 7.2, 18);
+    expect(dose).toBeCloseTo(19.98967131145303, 9);
+  });
+
+  it("retorna 0 cuando no corresponde subir pH", () => {
+    const volumeLiters = calculateVolumeLiters(3.05, 76);
+    expect(calculatePhRaiseDose(7.2, volumeLiters, 100, 7.2, 18)).toBe(0);
+    expect(calculatePhRaiseDose(7.0, volumeLiters, 0, 7.2, 18)).toBe(0);
   });
 });
 

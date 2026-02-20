@@ -1,10 +1,11 @@
-import type { PoolConfig } from "./types";
+import type { DoseUnit, PoolConfig, ProductPresentation } from "./types";
 
 const PH_NEUTRAL_MIN = 7.2;
 const PH_NEUTRAL_MAX = 7.6;
 const REFERENCE_MURIATIC_ACID_PCT = 31.45;
 const PH_DOSE_ML_PER_01_10K_AT_31_PCT = 25;
 const CHLORINE_MG_PER_PPM_L = 1;
+const PH_UP_REFERENCE_G_PER_01_10K = 18;
 
 export function calculateVolumeLiters(diameterM: number, waterHeightCm: number): number {
   const radius = diameterM / 2;
@@ -70,15 +71,23 @@ export function estimatePhAfterAcidDose(
   return measuredPh - phDrop;
 }
 
-export function calculateChlorineDoseMl(
+interface ChlorineDoseResult {
+  maintenance: number;
+  corrective: number;
+  unit: DoseUnit;
+}
+
+export function calculateChlorineDose(
   measuredChlorinePpm: number,
   volumeLiters: number,
   chlorineConcentrationPct: number,
+  presentation: ProductPresentation,
   targetMinPpm: number,
   targetMaxPpm: number
-): { maintenanceMl: number; correctiveMl: number } {
+): ChlorineDoseResult {
+  const unit: DoseUnit = presentation === "granular-g" ? "g" : "ml";
   if (chlorineConcentrationPct <= 0) {
-    return { maintenanceMl: 0, correctiveMl: 0 };
+    return { maintenance: 0, corrective: 0, unit };
   }
 
   const targetMidPpm = (targetMinPpm + targetMaxPpm) / 2;
@@ -90,7 +99,43 @@ export function calculateChlorineDoseMl(
   const maintenanceMl = mgNeededToMin / mgPerMl;
   const correctiveMl = mgNeededToMid / mgPerMl;
 
-  return { maintenanceMl, correctiveMl };
+  return { maintenance: maintenanceMl, corrective: correctiveMl, unit };
+}
+
+export function calculateChlorineDoseMl(
+  measuredChlorinePpm: number,
+  volumeLiters: number,
+  chlorineConcentrationPct: number,
+  targetMinPpm: number,
+  targetMaxPpm: number
+): { maintenanceMl: number; correctiveMl: number } {
+  const result = calculateChlorineDose(
+    measuredChlorinePpm,
+    volumeLiters,
+    chlorineConcentrationPct,
+    "liquid-ml",
+    targetMinPpm,
+    targetMaxPpm
+  );
+  return { maintenanceMl: result.maintenance, correctiveMl: result.corrective };
+}
+
+export function calculatePhRaiseDose(
+  measuredPh: number,
+  volumeLiters: number,
+  productConcentrationPct: number,
+  targetPhMin: number,
+  referenceDoseGPerPointPer10k: number = PH_UP_REFERENCE_G_PER_01_10K
+): number {
+  if (measuredPh >= targetPhMin || productConcentrationPct <= 0 || referenceDoseGPerPointPer10k <= 0) {
+    return 0;
+  }
+
+  const delta = targetPhMin - measuredPh;
+  const steps = delta / 0.1;
+  const volumeFactor = volumeLiters / 10000;
+  const concentrationFactor = 100 / productConcentrationPct;
+  return Math.max(0, steps * referenceDoseGPerPointPer10k * volumeFactor * concentrationFactor);
 }
 
 export function classifyPh(measuredPh: number, config: PoolConfig): "ok" | "leve" | "ajuste" {
