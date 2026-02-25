@@ -15,6 +15,11 @@ import {
   toFixedNumber
 } from "../domain/calculations";
 import { defaultPoolConfig } from "../domain/defaults";
+import {
+  buildIntensiveSummary,
+  evaluateIntensiveCycle,
+  getIntensiveSessions
+} from "../domain/intensiveCycle";
 import type { CheckMoment, DoseUnit, PoolConfig, Session } from "../domain/types";
 import "./App.css";
 
@@ -343,51 +348,24 @@ export function App() {
   }, [config, draft]);
 
   const latest = sessions[0];
-  const intensiveSessions = useMemo(
-    () =>
-      sessions
-        .filter((session) => session.kind === "intensive-cycle")
-        .slice()
-        .sort((a, b) => Date.parse(a.timestamp) - Date.parse(b.timestamp)),
-    [sessions]
-  );
+  const intensiveSessions = useMemo(() => getIntensiveSessions(sessions), [sessions]);
   const intensiveStats = useMemo(() => {
-    const overnightPairs: Array<{ loss: number; morningChlorine: number }> = [];
-    const nightCount = intensiveSessions.filter((session) => session.checkMoment === "night").length;
-
-    for (let index = 1; index < intensiveSessions.length; index += 1) {
-      const previous = intensiveSessions[index - 1];
-      const current = intensiveSessions[index];
-      if (previous.checkMoment === "night" && current.checkMoment === "start-day") {
-        overnightPairs.push({
-          loss: previous.measuredChlorinePpm - current.measuredChlorinePpm,
-          morningChlorine: current.measuredChlorinePpm
-        });
-      }
+    if (!config) {
+      return {
+        nightCount: 0,
+        overnightPairs: [],
+        lastPair: null,
+        canClose: false
+      };
     }
 
-    const lastPair = overnightPairs.length > 0 ? overnightPairs[overnightPairs.length - 1] : null;
-    const neededPairs = config?.workflow.intensiveMinNights ?? 2;
-    const threshold = config?.workflow.intensiveMaxOvernightLossPpm ?? 1;
-    const recentPairs = overnightPairs.slice(-neededPairs);
-    const hasEnoughPairs = recentPairs.length >= neededPairs;
-    const stableLoss =
-      hasEnoughPairs && recentPairs.every((pair) => pair.loss >= 0 && pair.loss <= threshold);
-    const morningsInRange =
-      hasEnoughPairs &&
-      !!config &&
-      recentPairs.every(
-        (pair) =>
-          pair.morningChlorine >= config.targets.chlorineMinPpm &&
-          pair.morningChlorine <= config.targets.chlorineMaxPpm
-      );
-
-    return {
-      nightCount,
-      overnightPairs,
-      lastPair,
-      canClose: hasEnoughPairs && stableLoss && morningsInRange
-    };
+    return evaluateIntensiveCycle(
+      intensiveSessions,
+      config.workflow.intensiveMinNights,
+      config.workflow.intensiveMaxOvernightLossPpm,
+      config.targets.chlorineMinPpm,
+      config.targets.chlorineMaxPpm
+    );
   }, [config, intensiveSessions]);
 
   async function refreshSessions(): Promise<void> {
@@ -583,28 +561,22 @@ export function App() {
       return;
     }
 
-    const nightsEvaluated = Math.min(
-      config?.workflow.intensiveMinNights ?? 2,
-      intensiveStats.overnightPairs.length
-    );
-    const evaluatedPairs = intensiveStats.overnightPairs.slice(-nightsEvaluated);
-    const avgOvernightLossPpm =
-      evaluatedPairs.reduce((sum, pair) => sum + pair.loss, 0) / evaluatedPairs.length;
-    const lastOvernightLossPpm = evaluatedPairs[evaluatedPairs.length - 1]?.loss ?? avgOvernightLossPpm;
-    const recommendation =
-      avgOvernightLossPpm <= (config?.workflow.intensiveMaxOvernightLossPpm ?? 1)
-        ? "Patron estabilizado. Volver al flujo diario con dosis correctiva solo cuando el cloro caiga bajo objetivo."
-        : "Patron aun exigente. Mantener monitoreo diario y considerar extender ciclo 1 noche adicional.";
+    const summary = buildIntensiveSummary({
+      reason: intensiveCycle.reason || "ciclo intensivo",
+      minNights: config?.workflow.intensiveMinNights ?? 2,
+      maxOvernightLossPpm: config?.workflow.intensiveMaxOvernightLossPpm ?? 1,
+      overnightPairs: intensiveStats.overnightPairs
+    });
 
     setError(null);
     setIntensiveCycle(createDefaultIntensiveCycleState());
     setIntensiveSummary({
       closedAtIso: new Date().toISOString(),
       reason: intensiveCycle.reason || "ciclo intensivo",
-      nightsEvaluated,
-      avgOvernightLossPpm: toFixedNumber(avgOvernightLossPpm, 2),
-      lastOvernightLossPpm: toFixedNumber(lastOvernightLossPpm, 2),
-      recommendation
+      nightsEvaluated: summary.nightsEvaluated,
+      avgOvernightLossPpm: toFixedNumber(summary.avgOvernightLossPpm, 2),
+      lastOvernightLossPpm: toFixedNumber(summary.lastOvernightLossPpm, 2),
+      recommendation: summary.recommendation
     });
     setScreen("home");
   }

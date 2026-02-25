@@ -9,8 +9,10 @@ import {
   classifyChlorine,
   classifyPh,
   estimatePhAfterAcidDose,
+  getStatusLabel,
   isChlorineInRange,
   isHeightInRange,
+  isPhNeutralBand,
   isPhInRange,
   toFixedNumber
 } from "./calculations";
@@ -143,5 +145,15 @@ describe("validaciones y clasificaciones", () => {
     expect(classifyChlorine(2, defaultPoolConfig)).toBe("ok");
     expect(classifyChlorine(0.8, defaultPoolConfig)).toBe("leve");
     expect(classifyChlorine(0.2, defaultPoolConfig)).toBe("ajuste");
+  });
+
+  it("etiqueta estados y banda neutral de pH", () => {
+    expect(getStatusLabel("ok")).toBe("OK");
+    expect(getStatusLabel("leve")).toBe("Ajuste leve");
+    expect(getStatusLabel("ajuste")).toBe("Ajuste requerido");
+
+    expect(isPhNeutralBand(7.2)).toBe(true);
+    expect(isPhNeutralBand(7.6)).toBe(true);
+    expect(isPhNeutralBand(7.7)).toBe(false);
   });
 });
